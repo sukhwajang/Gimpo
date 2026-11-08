@@ -114,9 +114,16 @@ export function MapView({ padLeft = 0, padRight = 0 }: { padLeft?: number; padRi
       styleOk = true;
       window.clearTimeout(timer);
     });
+    let tileWarned = '';
     map.on('error', (e) => {
       const msg = String((e as { error?: Error }).error?.message ?? '');
       if (!styleOk && /style|Failed to fetch|NetworkError|load/i.test(msg)) fallback();
+      // 브이월드 타일 실패는 한 번만 알림
+      const s = useStore.getState();
+      if ((e as { sourceId?: string }).sourceId === 'base' && s.ui.basemap.startsWith('vworld') && tileWarned !== s.ui.basemap) {
+        tileWarned = s.ui.basemap;
+        s.showToast("브이월드 지도를 불러오지 못했습니다. 설정 탭의 '키 확인'으로 원인을 확인하세요");
+      }
     });
     map.on('load', () => setMapReady(true));
     map.on('zoomend', () => setZoom(map.getZoom()));

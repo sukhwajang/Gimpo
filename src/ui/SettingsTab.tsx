@@ -1,4 +1,5 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
+import { checkVworldKey, type VworldCheckResult } from '../map/vworldCheck';
 import { BASEMAPS } from '../map/basemaps';
 import { exportJson, importJson } from '../state/persist';
 import { useStore, type BasemapId } from '../state/store';
@@ -22,6 +23,7 @@ export function SettingsTab() {
   const resetScenario = useStore((s) => s.resetScenario);
   const toast = useStore((s) => s.showToast);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [check, setCheck] = useState<VworldCheckResult | 'running' | null>(null);
 
   const download = () => {
     const blob = new Blob([exportJson()], { type: 'application/json' });
@@ -45,8 +47,22 @@ export function SettingsTab() {
       <label className="field">
         <span>브이월드 API 키</span>
         <input className="text" type="password" placeholder="vworld.kr 에서 발급한 인증키" value={ui.vworldKey} onChange={(e) => setUi({ vworldKey: e.target.value.trim() })} />
-        <span className="muted small">키는 이 브라우저에만 저장됩니다. 발급 시 이 사이트 주소를 서비스 URL로 등록해야 합니다.</span>
+        <span className="muted small">
+          키는 이 브라우저에만 저장됩니다. 발급 시 서비스 URL에 <b>{window.location.origin === 'null' ? '사이트 주소' : window.location.origin}</b> 를 등록해야 합니다.
+        </span>
       </label>
+      <div className="row wrap">
+        <button
+          disabled={!ui.vworldKey || check === 'running'}
+          onClick={async () => {
+            setCheck('running');
+            setCheck(await checkVworldKey(ui.vworldKey));
+          }}
+        >
+          {check === 'running' ? '확인 중…' : '키 확인'}
+        </button>
+      </div>
+      {check && check !== 'running' && <div className={`check-result ${check.ok ? 'ok' : 'fail'}`}>{check.message}</div>}
 
       <div className="section-title">시뮬레이션 계수</div>
       {FIELDS.map((f) => (
