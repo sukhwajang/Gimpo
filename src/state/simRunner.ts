@@ -1,4 +1,6 @@
 import type { WorkerRequest, WorkerResponse } from '../sim/worker';
+// 워커를 번들 안에 넣어 두면 단일 HTML 파일(file://)로 열어도 동작한다
+import SimWorker from '../sim/worker?worker&inline';
 import { useStore } from './store';
 
 let worker: Worker | null = null;
@@ -8,7 +10,12 @@ let timer: number | undefined;
 
 function getWorker(): Worker {
   if (!worker) {
-    worker = new Worker(new URL('../sim/worker.ts', import.meta.url), { type: 'module' });
+    worker = new SimWorker();
+    worker.onerror = (ev) => {
+      const msg = `워커 오류: ${ev.message || '알 수 없는 오류'}`;
+      console.error(msg, ev);
+      useStore.getState().setSim({ running: false, error: msg });
+    };
     worker.onmessage = (ev: MessageEvent<WorkerResponse>) => {
       const { id, scenario, baseline, error } = ev.data;
       if (id !== latest) return;

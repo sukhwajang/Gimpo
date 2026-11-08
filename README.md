@@ -21,6 +21,14 @@ npm run build      # dist/ 에 정적 사이트 생성
 
 서버가 필요 없는 정적 웹앱입니다. 시뮬레이션은 브라우저의 Web Worker에서 1초 안팎으로 돌아갑니다.
 
+### 파일 하나로 보기 (설치 없이)
+
+```bash
+npm run build:single   # dist-single/index.html 하나에 모든 코드·데이터가 들어감
+```
+
+만들어진 `index.html` 을 크롬·엣지에서 더블클릭하면 바로 열립니다. 배경지도는 인터넷이 연결돼 있어야 보이고, 연결이 안 되면 행정경계만 있는 오프라인 지도로 바뀝니다.
+
 ### GitHub Pages 배포
 
 `.github/workflows/deploy.yml` 이 `main` 브랜치에 푸시될 때 테스트 → 빌드 → Pages 배포를 합니다.
