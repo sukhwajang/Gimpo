@@ -7,14 +7,20 @@
 //                    - 국토교통부_공동주택 기본 정보제공 서비스
 //   VWORLD_KEY     : 브이월드 오픈API 인증키 (주소 → 좌표 변환)
 //
-// 실행 예:
-//   DATA_GO_KR_KEY=... VWORLD_KEY=... node scripts/fetch-apartments.mjs 41570 28260 > apartments.csv
+// 실행 예 (결과는 apartments.csv 로 저장, UTF-8):
+//   macOS/Linux : DATA_GO_KR_KEY=... VWORLD_KEY=... node scripts/fetch-apartments.mjs 41570 28260
+//   Windows     : $env:DATA_GO_KR_KEY="..."; $env:VWORLD_KEY="..."; node scripts/fetch-apartments.mjs 41570 28260
 //   (시군구 코드: 김포 41570, 인천 서구 28260, 계양 28245, 강서 11500, 양천 11470)
+//   --out 파일명 으로 저장 위치를 바꿀 수 있다.
+//   브이월드 키에 등록한 서비스 URL 확인이 필요하다는 오류가 나면 VWORLD_DOMAIN=등록한주소 를 함께 넣는다.
 //
 // 주의: API 주소·응답 필드는 공공데이터포털 개편 때 바뀔 수 있다. 바뀌었으면 아래 환경변수로 덮어쓴다.
 //   APT_LIST_URL, APT_INFO_URL
 
+import fs from 'node:fs';
+
 const DATA_KEY = process.env.DATA_GO_KR_KEY;
+const VWORLD_DOMAIN = process.env.VWORLD_DOMAIN;
 const VWORLD_KEY = process.env.VWORLD_KEY;
 const LIST_URL = process.env.APT_LIST_URL ?? 'https://apis.data.go.kr/1613000/AptListService3/getSigunguAptList3';
 const INFO_URL = process.env.APT_INFO_URL ?? 'https://apis.data.go.kr/1613000/AptBasisInfoServiceV4/getAphusBassInfoV4';
@@ -25,7 +31,10 @@ if (!DATA_KEY || !VWORLD_KEY) {
   console.error('DATA_GO_KR_KEY 와 VWORLD_KEY 환경변수가 필요합니다.');
   process.exit(1);
 }
-const codes = process.argv.slice(2);
+const args = process.argv.slice(2);
+const outIdx = args.indexOf('--out');
+const OUT = outIdx >= 0 ? args[outIdx + 1] : 'apartments.csv';
+const codes = args.filter((a, i) => !(outIdx >= 0 && (i === outIdx || i === outIdx + 1)) && /^\d{5}$/.test(a));
 if (!codes.length) {
   console.error('시군구 코드를 하나 이상 넣어 주세요. 예: node scripts/fetch-apartments.mjs 41570');
   process.exit(1);
@@ -74,7 +83,7 @@ async function info(kaptCode) {
 
 async function geocode(address) {
   for (const type of ['road', 'parcel']) {
-    const url = `https://api.vworld.kr/req/address?service=address&request=getcoord&version=2.0&crs=epsg:4326&refine=true&simple=false&format=json&type=${type}&key=${encodeURIComponent(VWORLD_KEY)}&address=${encodeURIComponent(address)}`;
+    const url = `https://api.vworld.kr/req/address?service=address&request=getcoord&version=2.0&crs=epsg:4326&refine=true&simple=false&format=json&type=${type}&key=${encodeURIComponent(VWORLD_KEY)}${VWORLD_DOMAIN ? `&domain=${encodeURIComponent(VWORLD_DOMAIN)}` : ''}&address=${encodeURIComponent(address)}`;
     const json = await getJson(url);
     const p = json?.response?.result?.point;
     if (p?.x && p?.y) return [Number(p.x), Number(p.y)];
@@ -87,13 +96,15 @@ const csvCell = (v) => {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 
-console.log('name,region,lat,lon,households');
+const rows = ['name,region,lat,lon,households'];
 let ok = 0;
 let skipped = 0;
 for (const code of codes) {
   const list = await listComplexes(code);
   console.error(`[${code}] 단지 ${list.length}개`);
+  let n = 0;
   for (const c of list) {
+    if (++n % 50 === 0) console.error(`  ${n}/${list.length}`);
     try {
       const d = await info(c.kaptCode);
       const hh = Number(d?.kaptdaCnt ?? d?.hoCnt ?? 0);
@@ -101,7 +112,7 @@ for (const code of codes) {
       if (!hh || !addr) { skipped++; continue; }
       const pt = await geocode(addr);
       if (!pt) { skipped++; continue; }
-      console.log([csvCell(c.kaptName), csvCell(REGION[code] ?? ''), pt[1].toFixed(6), pt[0].toFixed(6), hh].join(','));
+      rows.push([csvCell(c.kaptName), csvCell(REGION[code] ?? ''), pt[1].toFixed(6), pt[0].toFixed(6), hh].join(','));
       ok++;
       await sleep(80);
     } catch (e) {
@@ -110,4 +121,5 @@ for (const code of codes) {
     }
   }
 }
-console.error(`완료: ${ok}개 단지, 건너뜀 ${skipped}개`);
+fs.writeFileSync(OUT, '\uFEFF' + rows.join('\n') + '\n', 'utf8');
+console.error(`완료: ${ok}개 단지 → ${OUT} (건너뜀 ${skipped}개)`);

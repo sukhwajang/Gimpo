@@ -52,11 +52,22 @@ npm run build:single   # dist-single/index.html 하나에 모든 코드·데이�
 ### 실제 아파트 세대수 넣는 법
 공공데이터포털 두 서비스를 활용신청하면 하나의 **일반 인증키(Decoding)** 로 둘 다 쓸 수 있습니다.
 
+Node.js 18 이상만 있으면 됩니다 (`npm install` 불필요). 결과는 `apartments.csv` 로 저장됩니다.
+
 ```bash
+# macOS / Linux
 DATA_GO_KR_KEY=공공데이터포털_인증키 VWORLD_KEY=브이월드_인증키 \
-  node scripts/fetch-apartments.mjs 41570 28260 28245 11500 11470 > apartments.csv
-# 시군구 코드: 김포 41570, 인천 서구 28260, 계양 28245, 강서 11500, 양천 11470
+  node scripts/fetch-apartments.mjs 41570 28260 28245 11500 11470
 ```
+
+```powershell
+# Windows PowerShell
+$env:DATA_GO_KR_KEY="공공데이터포털_인증키"; $env:VWORLD_KEY="브이월드_인증키"
+node scripts/fetch-apartments.mjs 41570 28260 28245 11500 11470
+```
+
+시군구 코드: 김포 41570, 인천 서구 28260, 계양 28245, 강서 11500, 양천 11470. 단지 수가 많아 몇 분 걸립니다.
+브이월드에서 서비스 URL 관련 오류가 나면 `VWORLD_DOMAIN=키에 등록한 주소` 를 함께 넣으세요.
 
 만들어진 `apartments.csv` 를 앱의 **단지·인구 → CSV 불러오기** 로 넣으면, 같은 지역의 추정치를 0으로 바꿔 중복 계산을 막을지 묻습니다.
 CSV 형식은 `name,region,lat,lon,households` 입니다 (직접 만든 엑셀을 CSV로 저장해도 됩니다).
