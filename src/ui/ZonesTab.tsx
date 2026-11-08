@@ -1,0 +1,168 @@
+import { useRef } from 'react';
+import { DETAIL_ZONES, DEV_SCENARIOS, SCENARIO_ZONES } from '../data/apartments';
+import { useStore } from '../state/store';
+import type { Zone } from '../types';
+import { fmt } from './format';
+
+const REGION_ORDER = ['김포', '검단', '인천 서구', '계양', '강서', '양천'];
+
+function parseCsv(text: string): Zone[] {
+  const rows = text.replace(/\r/g, '').split('\n').filter((l) => l.trim());
+  if (rows.length < 2) return [];
+  const head = rows[0].split(',').map((h) => h.trim().toLowerCase());
+  const idx = (names: string[]) => head.findIndex((h) => names.includes(h));
+  const iName = idx(['name', '단지명', '이름']);
+  const iLat = idx(['lat', 'latitude', '위도']);
+  const iLon = idx(['lon', 'lng', 'longitude', '경도']);
+  const iHh = idx(['households', '세대수', 'hh']);
+  const iRegion = idx(['region', '지역']);
+  if (iLat < 0 || iLon < 0 || iHh < 0) throw new Error('CSV에 위도(lat), 경도(lon), 세대수(households) 열이 필요합니다');
+  const out: Zone[] = [];
+  rows.slice(1).forEach((r, k) => {
+    const c = r.split(',');
+    const lat = Number(c[iLat]);
+    const lon = Number(c[iLon]);
+    const hh = Number(c[iHh]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || !Number.isFinite(hh)) return;
+    out.push({
+      id: `user-csv-${Date.now().toString(36)}-${k}`,
+      name: iName >= 0 ? c[iName].trim() : `CSV 단지 ${k + 1}`,
+      lat,
+      lon,
+      households: Math.max(0, Math.round(hh)),
+      source: 'user',
+      region: iRegion >= 0 ? c[iRegion]?.trim() || undefined : undefined,
+    });
+  });
+  return out;
+}
+
+function download(name: string, text: string, type = 'text/plain') {
+  const blob = new Blob([text], { type });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+export function ZonesTab() {
+  const overrides = useStore((s) => s.scenario.householdOverrides);
+  const active = useStore((s) => s.scenario.activeScenarios);
+  const userZones = useStore((s) => s.scenario.userZones);
+  const pph = useStore((s) => s.scenario.settings.personsPerHousehold);
+  const setHh = useStore((s) => s.setHouseholds);
+  const toggleDev = useStore((s) => s.toggleDevScenario);
+  const updateUser = useStore((s) => s.updateUserZone);
+  const removeUser = useStore((s) => s.removeUserZone);
+  const addUser = useStore((s) => s.addUserZone);
+  const edit = useStore((s) => s.ui.edit);
+  const setUi = useStore((s) => s.setUi);
+  const toast = useStore((s) => s.showToast);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const hh = (z: Zone) => overrides[z.id] ?? z.households;
+
+  const exportCsv = () => {
+    const all = [...DETAIL_ZONES, ...SCENARIO_ZONES.filter((z) => active[z.scenario!]), ...userZones];
+    const lines = ['name,region,lat,lon,households', ...all.map((z) => `${z.name},${z.region ?? ''},${z.lat},${z.lon},${hh(z)}`)];
+    download('gimpo-apartments.csv', '﻿' + lines.join('\n'), 'text/csv');
+  };
+
+  const onFile = async (f: File) => {
+    try {
+      const zones = parseCsv(await f.text());
+      if (!zones.length) throw new Error('읽을 수 있는 행이 없습니다');
+      zones.forEach(addUser);
+      toast(`${zones.length}개 단지를 추가했습니다`);
+    } catch (e) {
+      toast(String((e as Error).message));
+    }
+  };
+
+  return (
+    <div className="panel-body">
+      <div className="section-title">개발 예정 단지 (시나리오)</div>
+      {DEV_SCENARIOS.map((d) => {
+        const total = SCENARIO_ZONES.filter((z) => z.scenario === d.id).reduce((a, z) => a + hh(z), 0);
+        return (
+          <label key={d.id} className={`dev-row ${active[d.id] ? 'active' : ''}`}>
+            <span className="switch small">
+              <input type="checkbox" checked={!!active[d.id]} onChange={() => toggleDev(d.id)} />
+              <span />
+            </span>
+            <span className="dev-text">
+              <span>
+                <b>{d.name}</b> <span className="badge">{d.status}</span>
+              </span>
+              <span className="muted small">
+                {d.description} · 모형 반영 {fmt(total)}세대
+              </span>
+            </span>
+          </label>
+        );
+      })}
+
+      <div className="section-title">내가 추가한 단지</div>
+      {userZones.map((z) => (
+        <div key={z.id} className="zone-row user">
+          <input className="text" value={z.name} onChange={(e) => updateUser(z.id, { name: e.target.value })} aria-label="단지 이름" />
+          <input type="number" value={z.households} min={0} step={100} onChange={(e) => updateUser(z.id, { households: Math.max(0, Number(e.target.value) || 0) })} aria-label="세대수" />
+          <span className="muted small">세대</span>
+          <button className="icon-btn danger" onClick={() => removeUser(z.id)} aria-label="삭제">
+            ×
+          </button>
+        </div>
+      ))}
+      <div className="row wrap">
+        <button className={edit.kind === 'zone' ? 'primary' : ''} onClick={() => setUi({ edit: edit.kind === 'zone' ? { kind: 'none' } : { kind: 'zone' } })}>
+          {edit.kind === 'zone' ? '지도를 클릭하세요… (취소)' : '+ 지도에서 단지 추가'}
+        </button>
+        <button onClick={() => fileRef.current?.click()}>CSV 불러오기</button>
+        <button onClick={exportCsv}>CSV 내보내기</button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".csv,text/csv"
+          hidden
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) onFile(f);
+            e.target.value = '';
+          }}
+        />
+      </div>
+      <p className="note">CSV 열: name, lat, lon, households (선택: region). 공공데이터포털 공동주택 정보를 정리해 넣으면 추정치 대신 실제 세대수로 계산합니다.</p>
+
+      <div className="section-title">생활권별 아파트 세대수 (추정치 · 수정 가능)</div>
+      {REGION_ORDER.map((region) => {
+        const zones = DETAIL_ZONES.filter((z) => z.region === region);
+        const sum = zones.reduce((a, z) => a + hh(z), 0);
+        return (
+          <details key={region} className="region" open={region === '김포'}>
+            <summary>
+              <b>{region}</b>
+              <span className="muted small">
+                {fmt(sum)}세대 · 약 {fmt(sum * pph)}명
+              </span>
+            </summary>
+            {zones.map((z) => (
+              <div key={z.id} className="zone-row">
+                <span className="zone-name">{z.name}</span>
+                <input type="number" value={hh(z)} min={0} step={500} onChange={(e) => setHh(z.id, Number(e.target.value) || 0)} aria-label={`${z.name} 세대수`} />
+                {overrides[z.id] !== undefined ? (
+                  <button className="icon-btn" onClick={() => setHh(z.id, null)} title={`기본값 ${fmt(z.households)}`}>
+                    ↺
+                  </button>
+                ) : (
+                  <span className="icon-spacer" />
+                )}
+              </div>
+            ))}
+          </details>
+        );
+      })}
+      <p className="note">그 밖의 서울·인천·경기 지역은 시군구 가구 수를 역별로 나눈 배경 수요로 계산합니다 (지도에는 표시하지 않음).</p>
+    </div>
+  );
+}

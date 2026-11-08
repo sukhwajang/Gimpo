@@ -1,0 +1,32 @@
+{
+  "name": "gimpo-seoul-metro-sim",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "김포–서울 지하철 혼잡 시뮬레이터 (3D 노선도 + 아파트 인구 기반 혼잡도)",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "build:network": "node scripts/build-network.mjs",
+    "calibrate": "vitest run src/sim/calibration.test.ts"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.7.0",
+    "typescript": "^5.7.3",
+    "vite": "^6.4.5",
+    "vitest": "^3.2.7"
+  },
+  "dependencies": {
+    "@deck.gl/core": "~9.1.14",
+    "@deck.gl/layers": "~9.1.14",
+    "@deck.gl/mapbox": "~9.1.14",
+    "maplibre-gl": "^5.6.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^5.0.3"
+  }
+}

@@ -1,0 +1,188 @@
+import type { PlanDef, Stop } from '../types';
+
+// 김포–서울 관련 철도 계획안 (2026년 11월 기준 공개 보도 정리).
+// 정거장 위치가 확정되지 않은 곳은 tentative(가칭·개략 위치)로 표시한다.
+// ref 가 있는 역은 기존 역 좌표를 그대로 쓰고 환승역으로 연결된다.
+
+const ref = (name: string, lon: number, lat: number, extra: Partial<Stop> = {}): Stop => ({ name, lon, lat, ref: name, ...extra });
+const tent = (name: string, lon: number, lat: number, extra: Partial<Stop> = {}): Stop => ({ name, lon, lat, tentative: true, ...extra });
+
+export const PLANS: PlanDef[] = [
+  {
+    id: 'L5X',
+    name: '서울 5호선 김포·검단 연장',
+    shortName: '5호선 연장',
+    color: '#B58CD0',
+    level: 'passed',
+    status: '예비타당성조사 통과 (2026.3)',
+    openYear: '2033 목표',
+    description:
+      '방화역에서 인천 검단신도시를 거쳐 김포한강2 콤팩트시티까지 약 25.8km. 대광위 조정안 기준 정거장 10개소(서울 1·인천 2·김포 7). 역 위치는 모두 가칭이며 기본계획에서 확정된다. 5호선과 직결 운행(환승 없음)으로 가정.',
+    sources: [
+      { title: '경향신문 — 예타 통과 (2026.3)', url: 'https://www.khan.co.kr/article/202603101430011' },
+      { title: '김포시청 — 서울5호선 김포·검단 연장', url: 'https://www.gimpo.go.kr/portal/contents.do?key=5779' },
+      { title: '주간경향 — 추가역 요구', url: 'https://weekly.khan.co.kr/article/202603191105011' },
+    ],
+    serviceId: '5',
+    params: { tph: 11, cap: 1280, speed: 42 },
+    stops: [
+      ref('방화', 126.81282, 37.57767),
+      tent('개화 정거장(가칭)', 126.792, 37.590),
+      tent('풍무2(가칭·추가역 요구)', 126.738, 37.598, { option: 'pungmu2' }),
+      ref('아라', 126.71333, 37.59222),
+      ref('신검단중앙', 126.69861, 37.6026),
+      tent('원당사거리(가칭·인천 요구)', 126.672, 37.597, { option: 'wondang' }),
+      tent('감정(가칭)', 126.703, 37.617),
+      tent('김포경찰서(가칭·추가역 요구)', 126.712, 37.624, { option: 'police' }),
+      ref('걸포북변', 126.70575, 37.63164),
+      ref('운양', 126.68383, 37.65386),
+      tent('장기 북측(가칭)', 126.668, 37.656),
+      tent('한강2CC 동(가칭)', 126.655, 37.664),
+      tent('한강2CC 서(가칭)', 126.640, 37.669),
+      tent('통진(가칭·추가역 요구)', 126.598, 37.690, { option: 'tongjin' }),
+    ],
+    options: [
+      { id: 'pungmu2', label: '풍무2역 추가', description: '김포시 추가역 요구안' },
+      { id: 'wondang', label: '원당사거리역 추가', description: '인천시 요구안 (예타안에서 제외됨)' },
+      { id: 'police', label: '김포경찰서역 추가', description: '김포시 추가역 요구안' },
+      { id: 'tongjin', label: '통진 연장', description: '김포시 추가역 요구안' },
+    ],
+  },
+  {
+    id: 'GTXD',
+    name: '서부권 광역급행철도 (GTX-D) 김포~부천',
+    shortName: 'GTX-D 김부선',
+    color: '#5B6BD6',
+    level: 'national',
+    status: '제4차 국가철도망 반영 · 제5차 계획(2026~2035) 고시 대기',
+    openYear: '미정',
+    description:
+      '김포 장기~부천종합운동장. 중간역(검단·계양·대장)은 개략 위치. GTX-B 선로를 공유해 여의도·용산·서울역까지 직결하는 방안이 논의되어 옵션으로 넣었다.',
+    sources: [
+      { title: '시사저널e — GTX-D·E·F 전망', url: 'https://www.sisajournal-e.com/news/articleView.html?idxno=424013' },
+      { title: '철도경제신문 — 제5차 국가철도망 공청회', url: 'https://www.redaily.co.kr/news/articleView.html?idxno=17711' },
+    ],
+    params: { tph: 6, cap: 1000, speed: 80 },
+    stops: [
+      ref('장기', 126.669, 37.64403),
+      tent('검단(가칭)', 126.695, 37.598),
+      ref('계양', 126.73632, 37.57154),
+      tent('대장(가칭)', 126.780, 37.542),
+      ref('부천종합운동장', 126.7975, 37.50585),
+      ref('신도림', 126.8913, 37.5088, { option: 'gtxb' }),
+      ref('여의도', 126.9243, 37.5216, { option: 'gtxb' }),
+      ref('용산', 126.9648, 37.5299, { option: 'gtxb' }),
+      ref('서울', 126.9726, 37.5547, { option: 'gtxb' }),
+    ],
+    options: [{ id: 'gtxb', label: 'GTX-B 공용 → 여의도·용산·서울역 직결', description: '부천종합운동장 이후 GTX-B 선로 공유 검토안' }],
+  },
+  {
+    id: 'GTXDX',
+    name: 'GTX-D 경기도 요구안 (김포~강남~하남)',
+    shortName: 'GTX-D 강남·하남',
+    color: '#3F4FC2',
+    level: 'proposal',
+    status: '지자체 요구안 (국가계획 미반영)',
+    openYear: '미정',
+    description:
+      '경기도가 요구해 온 김포~부천~강남~하남 노선. 부천 이후 경로와 정거장은 개략 위치로, 실제 계획이 아니라 비교용 가정이다.',
+    sources: [
+      { title: '시사저널e — GTX-D 노선 쟁점', url: 'https://www.sisajournal-e.com/news/articleView.html?idxno=424013' },
+      { title: '하남일보 — 하남 연장 GTX-D', url: 'http://m.hanamilbo.net/news/articleView.html?idxno=8583' },
+    ],
+    params: { tph: 6, cap: 1000, speed: 85 },
+    stops: [
+      ref('장기', 126.669, 37.64403),
+      tent('검단(가칭)', 126.695, 37.598),
+      ref('계양', 126.73632, 37.57154),
+      tent('대장(가칭)', 126.780, 37.542),
+      ref('부천종합운동장', 126.7975, 37.50585),
+      ref('신림', 126.9297, 37.4842),
+      ref('사당', 126.9816, 37.4766),
+      ref('강남', 127.0276, 37.4979),
+      ref('삼성', 127.0631, 37.5089),
+      ref('잠실', 127.1001, 37.5133),
+      ref('강동', 127.1324, 37.5358),
+      ref('하남시청', 127.2061, 37.5404),
+    ],
+  },
+  {
+    id: 'DH',
+    name: '대장홍대선',
+    shortName: '대장홍대선',
+    color: '#E0607E',
+    level: 'construction',
+    status: '공사 중 (2025.12 착공)',
+    openYear: '2031 목표',
+    description:
+      '부천 대장지구~홍대입구 약 20.1km, 정거장 12개소. 원종(서해선)·화곡(5호선)·가양(9호선)·홍대입구 환승. 일부 역은 개략 위치.',
+    sources: [
+      { title: '머니투데이방송 — 구간별 착공', url: 'https://news.mtn.co.kr/news-detail/2026081814510895844' },
+      { title: '헤럴드경제 — 착공', url: 'https://www.heraldk.com/article/2025121500155055894' },
+    ],
+    params: { tph: 12, cap: 960, speed: 38 },
+    stops: [
+      tent('부천대장(가칭)', 126.780, 37.548),
+      ref('원종', 126.80484, 37.52406),
+      tent('고강(가칭)', 126.818, 37.531),
+      tent('신월(가칭)', 126.833, 37.527),
+      ref('화곡', 126.84044, 37.54158),
+      tent('강서구청(가칭)', 126.850, 37.551),
+      ref('가양', 126.85508, 37.56111),
+      tent('덕은(가칭)', 126.868, 37.581),
+      tent('상암(가칭)', 126.884, 37.578),
+      tent('성산(가칭)', 126.905, 37.566),
+      ref('홍대입구', 126.9245, 37.5572),
+    ],
+  },
+  {
+    id: 'I2X',
+    name: '인천2호선 고양 연장',
+    shortName: '인천2 고양연장',
+    color: '#F2A54A',
+    level: 'study',
+    status: '예비타당성조사 진행 중',
+    openYear: '미정 (통과 시 2035 목표 보도)',
+    description:
+      '독정역에서 분기해 김포 걸포북변을 거쳐 고양 킨텍스·일산까지 약 19.63km, 정거장 12개소 계획. 중간역은 개략 위치. 인천2호선과 직결 운행 가정.',
+    sources: [
+      { title: '서울신문 — 예타 조속 통과 촉구 (2026.10)', url: 'https://m.go.seoul.co.kr/news/newsView.php?id=20261027500274' },
+      { title: '뉴스서울 — 예타 대상 선정', url: 'https://newsseoul.co.kr/news/view/1065601814651618' },
+    ],
+    serviceId: 'I2',
+    params: { tph: 10, cap: 206, speed: 35 },
+    stops: [
+      ref('독정', 126.67598, 37.58493),
+      tent('불로(가칭)', 126.682, 37.612),
+      tent('감정(가칭)', 126.700, 37.622),
+      ref('걸포북변', 126.70575, 37.63164),
+      tent('김포 걸포 북측(가칭)', 126.712, 37.650),
+      tent('킨텍스(가칭)', 126.745, 37.667),
+      ref('주엽', 126.7614, 37.6702),
+      tent('일산(가칭)', 126.770, 37.680),
+      tent('중산(가칭)', 126.778, 37.692),
+    ],
+  },
+  {
+    id: 'GOLD-OPS',
+    name: '김포골드라인 증편 (운영 시나리오)',
+    shortName: '골드라인 증편',
+    color: '#C9A227',
+    level: 'ops',
+    status: '가정 시나리오',
+    description: '골드라인 첨두 배차를 약 2분(시간당 30회)으로 줄였을 때를 가정. 차량·신호 여건상 실제 가능 여부와 별개인 비교용 시나리오다.',
+    sources: [{ title: '머니투데이 — 혼잡도 180%대 (2026.5)', url: 'https://www.mt.co.kr/estate/2026/05/04/2026050413592244239' }],
+    params: { tph: 30, cap: 172, speed: 48 },
+    stops: [],
+    ops: { target: 'G', tph: 30 },
+  },
+];
+
+export const LEVEL_LABEL: Record<PlanDef['level'], string> = {
+  construction: '공사 중',
+  passed: '예타 통과',
+  study: '예타 진행',
+  national: '국가계획',
+  proposal: '요구안',
+  ops: '운영 가정',
+};
