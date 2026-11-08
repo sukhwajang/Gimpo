@@ -240,8 +240,12 @@ input[type='color'] {
   cursor: pointer;
   flex-wrap: wrap;
 }
-.mobile-only {
+.mobile-only,
+.mobile-only-inline {
   display: none;
+}
+.top-actions button {
+  white-space: nowrap;
 }
 
 /* 패널 */
@@ -1067,8 +1071,12 @@ table.mini td:last-child {
   }
 }
 @media (max-width: 900px) {
-  .mobile-only {
+  .mobile-only,
+  .mobile-only-inline {
     display: inline-block;
+  }
+  .desktop-only {
+    display: none;
   }
   .topbar {
     left: 8px;

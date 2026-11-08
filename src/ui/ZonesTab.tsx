@@ -6,10 +6,32 @@ import { fmt } from './format';
 
 const REGION_ORDER = ['김포', '검단', '인천 서구', '계양', '강서', '양천'];
 
+function splitCsvLine(line: string): string[] {
+  const cells: string[] = [];
+  let cur = '';
+  let q = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (q) {
+      if (ch === '"' && line[i + 1] === '"') {
+        cur += '"';
+        i++;
+      } else if (ch === '"') q = false;
+      else cur += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === ',') {
+      cells.push(cur);
+      cur = '';
+    } else cur += ch;
+  }
+  cells.push(cur);
+  return cells;
+}
+
 function parseCsv(text: string): Zone[] {
-  const rows = text.replace(/\r/g, '').split('\n').filter((l) => l.trim());
+  const rows = text.replace(/^\uFEFF/, '').replace(/\r/g, '').split('\n').filter((l) => l.trim());
   if (rows.length < 2) return [];
-  const head = rows[0].split(',').map((h) => h.trim().toLowerCase());
+  const head = splitCsvLine(rows[0]).map((h) => h.trim().toLowerCase());
   const idx = (names: string[]) => head.findIndex((h) => names.includes(h));
   const iName = idx(['name', '단지명', '이름']);
   const iLat = idx(['lat', 'latitude', '위도']);
@@ -19,7 +41,7 @@ function parseCsv(text: string): Zone[] {
   if (iLat < 0 || iLon < 0 || iHh < 0) throw new Error('CSV에 위도(lat), 경도(lon), 세대수(households) 열이 필요합니다');
   const out: Zone[] = [];
   rows.slice(1).forEach((r, k) => {
-    const c = r.split(',');
+    const c = splitCsvLine(r);
     const lat = Number(c[iLat]);
     const lon = Number(c[iLon]);
     const hh = Number(c[iHh]);
@@ -74,6 +96,11 @@ export function ZonesTab() {
       const zones = parseCsv(await f.text());
       if (!zones.length) throw new Error('읽을 수 있는 행이 없습니다');
       zones.forEach(addUser);
+      // 같은 지역의 추정 단지군과 중복되지 않도록
+      const regions = [...new Set(zones.map((z) => z.region).filter((r): r is string => !!r && REGION_ORDER.includes(r)))];
+      if (regions.length && confirm(`CSV에 ${regions.join('·')} 지역 단지가 있습니다. 이 지역의 추정 단지군을 0세대로 바꿔 중복 계산을 막을까요?`)) {
+        DETAIL_ZONES.filter((z) => z.region && regions.includes(z.region)).forEach((z) => setHh(z.id, 0));
+      }
       toast(`${zones.length}개 단지를 추가했습니다`);
     } catch (e) {
       toast(String((e as Error).message));

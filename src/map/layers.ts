@@ -190,6 +190,8 @@ export function buildStaticLayers(inp: LayerInput): Layer[] {
           fontSettings: { sdf: true, fontSize: 48, buffer: 6 },
           outlineWidth: 3,
           outlineColor: inp.dark ? [14, 19, 32, 230] : [255, 255, 255, 230],
+          // 혼잡도 벽에 가려지지 않도록 항상 위에 그림
+          parameters: { depthCompare: 'always', depthWriteEnabled: false },
           updateTriggers: { getColor: inp.dark },
         }),
       );

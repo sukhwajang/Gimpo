@@ -73,7 +73,12 @@ function TopBar({ onToggleLeft, onToggleRight }: { onToggleLeft: () => void; onT
             </div>
           )}
         </div>
-        <button onClick={share}>공유 링크</button>
+        <button onClick={share} title="공유 링크 복사">
+          <span className="desktop-only">공유 링크</span>
+          <span className="mobile-only-inline" aria-hidden>
+            🔗
+          </span>
+        </button>
         <button className="icon-btn mobile-only" onClick={onToggleRight} aria-label="결과 패널">
           📊
         </button>
