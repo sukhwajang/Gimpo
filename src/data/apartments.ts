@@ -68,7 +68,12 @@ export const DEV_SCENARIOS: DevScenario[] = [
   { id: 'hangang2cc', name: '김포한강2 콤팩트시티', description: '약 4.6만 세대 계획 (양촌·마산·장기·운양 일원)', status: '공공주택지구 지정' },
   { id: 'pungmu-station', name: '풍무역세권 도시개발', description: '약 6,800세대', status: '개발 진행' },
   { id: 'geomdan-final', name: '검단신도시 잔여 입주', description: '약 1.5만 세대 추가 입주', status: '입주 진행' },
-  { id: 'gochon-riverside', name: '고촌 한강변 신규택지(후보)', description: '약 3.7만 가구 구상 — 국토부 후보지 보도(2026.11)', status: '후보지' },
+  {
+    id: 'gimpo-ara',
+    name: '김포아라 공공주택지구',
+    description: '고촌읍(신곡·태리·풍곡·향산리)·사우동 365만㎡, 3만7천 가구·계획인구 8만3천 명. 2026.10.29 발표, 2027 지구지정·2029 착공·2035 준공 목표. 5호선 전호·향산역(가칭) 인근',
+    status: '신규 지정 추진 (주민열람 ~11.18)',
+  },
   { id: 'gyeyang-tv', name: '계양테크노밸리', description: '약 1.7만 세대 (3기 신도시)', status: '입주 예정' },
   { id: 'bucheon-daejang', name: '부천대장지구', description: '약 2만 세대 (3기 신도시)', status: '입주 예정' },
 ];
@@ -82,7 +87,10 @@ export const SCENARIO_ZONES: Zone[] = [
   s('sc-2cc-w', '한강2 콤팩트시티(서측)', 126.644, 37.668, 23000, 'hangang2cc', '김포'),
   s('sc-pungmu', '풍무역세권', 126.736, 37.600, 6800, 'pungmu-station', '김포'),
   s('sc-geomdan3', '검단신도시 3단계', 126.701, 37.612, 15000, 'geomdan-final', '검단'),
-  s('sc-gochon-rv', '고촌 한강변 신규택지', 126.776, 37.616, 37000, 'gochon-riverside', '김포'),
+  // 김포아라: 지구 경계 미공개 — 사우동 북측~고촌 향산·풍곡·신곡리 일대 개략 위치
+  s('sc-ara-w', '김포아라 서측(사우동 북측)', 126.733, 37.627, 11000, 'gimpo-ara', '김포'),
+  s('sc-ara-c', '김포아라 중앙(향산·풍곡리)', 126.752, 37.628, 14000, 'gimpo-ara', '김포'),
+  s('sc-ara-e', '김포아라 동측(신곡·태리)', 126.774, 37.614, 12000, 'gimpo-ara', '김포'),
   s('sc-gyeyang-tv', '계양테크노밸리', 126.750, 37.562, 17000, 'gyeyang-tv', '계양'),
   s('sc-daejang', '부천대장지구', 126.778, 37.546, 20000, 'bucheon-daejang', '부천'),
 ];

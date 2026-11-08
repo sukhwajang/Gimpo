@@ -23,9 +23,10 @@ const MU = 0.18; // 역 선택 민감도 (1/분)
 const ACCESS_MAX_KM = 3.2;
 const MAX_CANDIDATES = 6;
 
-export function crowdFactor(ratio: number): number {
+/** 혼잡 불편 배율: 정원 80%를 넘으면 차내 시간을 더 길게 느낀다 (aversion = 혼잡 회피 강도) */
+export function crowdFactor(ratio: number, aversion = 1.0): number {
   const over = ratio - 0.8;
-  return over > 0 ? 1 + 0.45 * Math.pow(over, 1.5) : 1;
+  return over > 0 ? 1 + aversion * Math.pow(over, 1.5) : 1;
 }
 
 export function accessMinutes(km: number): number {
@@ -279,7 +280,7 @@ export function simulate(input: SimInput): SimResult {
     for (let it = 1; it <= iterations; it++) {
       for (let e = 0; e < E; e++) {
         const r = net.eRide[e];
-        cost[e] = r >= 0 ? net.eBase[e] * crowdFactor((x[r] + bg[r]) / net.rides[r].capPerHour) : net.eBase[e];
+        cost[e] = r >= 0 ? net.eBase[e] * crowdFactor((x[r] + bg[r]) / net.rides[r].capPerHour, settings.crowdAversion ?? 1.0) : net.eBase[e];
       }
       const y = new Float64Array(R);
       const by = new Float64Array(C);

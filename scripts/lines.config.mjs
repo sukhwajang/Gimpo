@@ -11,8 +11,8 @@
 export const LINES /* params.tph·cap·speed, bg */ = [
   {
     id: 'G', name: '김포골드라인', color: '#A17800', prefer: ['L41G1'],
-    params: { tph: 25, cap: 172, speed: 48, bg: 0 },
-    note: '2량 경전철. 정원 172명/편성',
+    params: { tph: 24, cap: 172, speed: 48, bg: 0 },
+    note: '2량 경전철. 정원 172명/편성. 2026년 출근 배차 2분 30초',
     sequences: [['양촌', '구래', '마산', '장기', '운양', '걸포북변', '사우', '풍무', '고촌', '김포공항']],
   },
   {

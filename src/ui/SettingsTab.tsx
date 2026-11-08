@@ -13,6 +13,7 @@ const FIELDS: { key: keyof SimSettings; label: string; min: number; max: number;
   { key: 'roadSpeed', label: '도로 평균 속도 (km/h)', min: 10, max: 40, step: 1, help: '출근길 버스·승용차 속도 (장거리는 자동 가산)' },
   { key: 'distanceDecayKm', label: '목적지 거리 감쇠 (km)', min: 6, max: 40, step: 1, help: '클수록 먼 업무지구로도 많이 출근' },
   { key: 'localWeight', label: '근거리 통근 비중', min: 0, max: 800, step: 10, help: '거주지 근처로 출근(철도 미이용)하는 비중' },
+  { key: 'crowdAversion', label: '혼잡 회피 강도', min: 0, max: 2, step: 0.05, help: '클수록 붐비는 노선을 피해 다른 노선·버스로 옮김 (국토부 골드라인 전망치에 맞춰 1.0)' },
 ];
 
 export function SettingsTab() {

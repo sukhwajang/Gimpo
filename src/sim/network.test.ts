@@ -19,7 +19,7 @@ describe('network', () => {
     const net = buildNetwork(EXISTING_LINES);
     const g = net.rides.filter((r) => r.lineId === 'G');
     expect(g).toHaveLength(18);
-    expect(g[0].capPerHour).toBe(25 * 172);
+    expect(g[0].capPerHour).toBe(24 * 172);
   });
 
   it('5호선 연장은 방화역에서 5호선과 직결(같은 승강장 노드)', () => {
@@ -35,13 +35,13 @@ describe('network', () => {
 
   it('선택 역 옵션을 켜면 정거장이 늘어난다', () => {
     const off = resolveLines({ ...empty, activePlans: { L5X: true } }).find((l) => l.id === 'L5X')!;
-    const on = resolveLines({ ...empty, activePlans: { L5X: true }, planOptions: { pungmu2: true, tongjin: true } }).find((l) => l.id === 'L5X')!;
+    const on = resolveLines({ ...empty, activePlans: { L5X: true }, planOptions: { wondang: true, tongjin: true } }).find((l) => l.id === 'L5X')!;
     expect(on.sequences[0].stops.length).toBe(off.sequences[0].stops.length + 2);
   });
 
   it('운영 시나리오는 기존 노선 파라미터를 바꾼다', () => {
     const lines = resolveLines({ ...empty, activePlans: { 'GOLD-OPS': true } });
-    expect(lines.find((l) => l.id === 'G')!.params.tph).toBe(30);
+    expect(lines.find((l) => l.id === 'G')!.params.tph).toBe(28);
   });
 
   it('내 노선이 기존 역 이름을 쓰면 환승역으로 연결된다', () => {

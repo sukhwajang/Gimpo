@@ -118,16 +118,19 @@ export interface SimSettings {
   distanceDecayKm: number;
   /** 거주지 인근(철도 미이용) 통근 비중 가중치 */
   localWeight: number;
+  /** 혼잡 회피 강도 — 클수록 붐비는 노선을 피해 다른 노선·버스로 옮김 */
+  crowdAversion: number;
 }
 
 export const DEFAULT_SETTINGS: SimSettings = {
   personsPerHousehold: 2.4,
-  commuteRate: 0.24,
+  commuteRate: 0.25,
   otherDemandFactor: 1.0,
   railBias: 0,
   roadSpeed: 20,
   distanceDecayKm: 16,
   localWeight: 200,
+  crowdAversion: 1.0,
 };
 
 export interface CustomLine {

@@ -44,8 +44,19 @@ describe('calibration', () => {
     const res = simulate(toBaselineInput(base));
     report(res, '현재');
     const peakGold = Math.max(...res.slots.map((_, i) => segRatio(res, i, 'G', '고촌', '김포공항')));
+    // 2026.4 실측 최고 183.7%
     expect(peakGold).toBeGreaterThan(1.7);
-    expect(peakGold).toBeLessThan(2.5);
+    expect(peakGold).toBeLessThan(2.0);
+  });
+
+  it('국토부 전망과 비슷: 증차 완료 약 170%, 증차+5호선 연장 160% 안팎', () => {
+    const g = (r: SimResult) => Math.max(...r.slots.map((_, i) => segRatio(r, i, 'G', '고촌', '김포공항')));
+    const ops = g(simulate(toSimInput({ ...base, activePlans: { 'GOLD-OPS': true } })));
+    const both = g(simulate(toSimInput({ ...base, activePlans: { 'GOLD-OPS': true, L5X: true } })));
+    expect(ops).toBeGreaterThan(1.6);
+    expect(ops).toBeLessThan(1.8);
+    expect(both).toBeLessThan(1.68);
+    expect(both).toBeLessThan(ops);
   });
 
   it('5호선 연장 시 골드라인 혼잡 완화', () => {
