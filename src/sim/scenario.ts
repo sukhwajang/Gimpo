@@ -8,7 +8,7 @@ export const PROBES = [
   { zoneId: 'gp-gurae', destId: 'yeouido', label: '구래 → 여의도' },
   { zoneId: 'gp-gurae', destId: 'cbd', label: '구래 → 광화문' },
   { zoneId: 'gp-gurae', destId: 'gangnam', label: '구래 → 강남' },
-  { zoneId: 'gp-pungmu', destId: 'magok', label: '풍무 → 마곡' },
+  { zoneId: 'gp-pungmu-n', destId: 'magok', label: '풍무 → 마곡' },
   { zoneId: 'ic-geomdan-c', destId: 'yeouido', label: '검단 → 여의도' },
   { zoneId: 'gp-unyang', destId: 'cbd', label: '운양 → 광화문' },
 ];

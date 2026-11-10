@@ -5,6 +5,7 @@ import type { Zone } from '../types';
 import { fmt } from './format';
 
 const REGION_ORDER = ['김포', '검단', '인천 서구', '계양', '강서', '양천'];
+const ESTIMATED_REGIONS = ['검단', '인천 서구'];
 
 function splitCsvLine(line: string): string[] {
   const cells: string[] = [];
@@ -161,14 +162,16 @@ export function ZonesTab() {
       </div>
       <p className="note">CSV 열: name, lat, lon, households (선택: region). 공공데이터포털 공동주택 정보를 정리해 넣으면 추정치 대신 실제 세대수로 계산합니다.</p>
 
-      <div className="section-title">생활권별 아파트 세대수 (추정치 · 수정 가능)</div>
+      <div className="section-title">생활권별 아파트 세대수 (수정 가능)</div>
       {REGION_ORDER.map((region) => {
         const zones = DETAIL_ZONES.filter((z) => z.region === region);
         const sum = zones.reduce((a, z) => a + hh(z), 0);
         return (
           <details key={region} className="region" open={region === '김포'}>
             <summary>
-              <b>{region}</b>
+              <b>
+                {region} {ESTIMATED_REGIONS.includes(region) && <span className="tag">추정</span>}
+              </b>
               <span className="muted small">
                 {fmt(sum)}세대 · 약 {fmt(sum * pph)}명
               </span>
@@ -189,7 +192,10 @@ export function ZonesTab() {
           </details>
         );
       })}
-      <p className="note">그 밖의 서울·인천·경기 지역은 시군구 가구 수를 역별로 나눈 배경 수요로 계산합니다 (지도에는 표시하지 않음).</p>
+      <p className="note">
+        김포·계양·강서·양천은 단지별 세대수를 동 단위로 합산한 값이고, 검단·인천 서구는 추정치입니다. 그 밖의 서울·인천·경기 지역은 시군구 가구 수를 역별로 나눈 배경 수요로
+        계산합니다 (지도에는 표시하지 않음).
+      </p>
     </div>
   );
 }

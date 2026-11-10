@@ -124,7 +124,7 @@ export interface SimSettings {
 
 export const DEFAULT_SETTINGS: SimSettings = {
   personsPerHousehold: 2.4,
-  commuteRate: 0.25,
+  commuteRate: 0.235,
   otherDemandFactor: 1.0,
   railBias: 0,
   roadSpeed: 20,
