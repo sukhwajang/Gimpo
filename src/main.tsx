@@ -4,7 +4,7 @@ import App from './App';
 import { ErrorBoundary } from './ui/ErrorBoundary';
 import { initPersistence } from './state/persist';
 import { initSimRunner } from './state/simRunner';
-import './styles.css';
+import './theme.css';
 
 try {
   initPersistence();

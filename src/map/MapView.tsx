@@ -3,34 +3,58 @@ import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { MapboxOverlay } from '@deck.gl/mapbox';
 import { ScatterplotLayer } from '@deck.gl/layers';
-import type { Layer, PickingInfo } from '@deck.gl/core';
+import type { PickingInfo } from '@deck.gl/core';
 import { useStore } from '../state/store';
 import { buildZones } from '../sim/scenario';
 import { EXISTING_STATIONS, nearestStation, planStops, type ExistingStation } from '../sim/resolve';
 import { PLANS } from '../data/plans';
 import { BASEMAPS, basemapStyle } from './basemaps';
-import { buildStaticLayers } from './layers';
+import { LABEL_FONT, LABEL_FONT_FALLBACK, WALL_M_PER_100, buildStaticLayers, heightScale, peakRatio, peakRide, type SegDatum, type StaticLayers } from './layers';
 import { prepareRuns, trainPositions, type TrainPos } from './trains';
-import { congestionLabel, hexToRgba } from './colors';
+import { congestionClass } from './colors';
 import type { Complex } from '../sim/network';
 import type { Zone } from '../types';
 
-const INITIAL = { center: [126.76, 37.585] as [number, number], zoom: 10.7, pitch: 52, bearing: -14 };
+const INITIAL = { center: [126.755, 37.592] as [number, number], zoom: 10.6, pitch: 50, bearing: -12 };
 const SIM_MIN_PER_SEC = 1.2;
 
 const pct = (r: number) => `${Math.round(r * 100)}%`;
 const fmt = (n: number) => Math.round(n).toLocaleString('ko-KR');
+const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch] as string);
 
-export function MapView({ padLeft = 0, padRight = 0 }: { padLeft?: number; padRight?: number }) {
+const TIP_STYLE: Record<string, string> = {
+  backgroundColor: 'rgba(13, 17, 28, 0.96)',
+  color: '#eef1f7',
+  fontSize: '12.5px',
+  lineHeight: '1.55',
+  borderRadius: '10px',
+  padding: '10px 12px',
+  border: '1px solid rgba(148, 163, 184, 0.22)',
+  boxShadow: '0 10px 30px rgba(0, 0, 0, 0.45)',
+  maxWidth: '300px',
+  fontFamily: 'inherit',
+};
+
+const pill = (ratio: number) => {
+  const c = congestionClass(ratio);
+  return `<span class="tip-pill"><i style="background:${c.color}"></i>${c.label}</span>`;
+};
+
+export function MapView({ padRight = 0 }: { padRight?: number }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const overlayRef = useRef<MapboxOverlay | null>(null);
-  const staticRef = useRef<Layer[]>([]);
+  const staticRef = useRef<StaticLayers>({ below: [], above: [] });
   const runsRef = useRef<ReturnType<typeof prepareRuns>>([]);
   const simTimeRef = useRef(0);
   const [zoom, setZoom] = useState(INITIAL.zoom);
+  const zoomRef = useRef(INITIAL.zoom);
+  zoomRef.current = zoom;
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
+  const [fontFamily, setFontFamily] = useState(LABEL_FONT_FALLBACK);
+  // 지도를 옮기거나 돌리면 역 이름 배치를 다시 계산
+  const [viewVersion, setViewVersion] = useState(0);
 
   const result = useStore((s) => s.sim.scenario);
   const baseline = useStore((s) => s.sim.baseline);
@@ -53,26 +77,32 @@ export function MapView({ padLeft = 0, padRight = 0 }: { padLeft?: number; padRi
     const overlay = overlayRef.current;
     if (!overlay) return;
     const st = useStore.getState();
-    const layers = [...staticRef.current];
-    if (st.ui.layers.trains && st.sim.scenario && runsRef.current.length) {
-      const slot = st.sim.scenario.slots[st.ui.slot];
-      const data: TrainPos[] = trainPositions(runsRef.current, simTimeRef.current, st.ui.hiddenLines);
+    const { below, above } = staticRef.current;
+    const layers = [...below];
+    const res = st.sim.scenario;
+    if (st.ui.layers.trains && res && runsRef.current.length) {
+      const sl = res.slots[st.ui.slot];
+      const walls = st.ui.layers.walls;
+      // 열차는 혼잡도 벽 위를 달린다
+      const hs = heightScale(zoomRef.current);
+      const heightOf = (ride: number) => (walls ? peakRatio(sl, ride >> 1) * WALL_M_PER_100 * hs + 70 * hs : 30 * hs);
+      const data: TrainPos[] = trainPositions(runsRef.current, simTimeRef.current, st.ui.hiddenLines, heightOf);
       layers.push(
         new ScatterplotLayer<TrainPos>({
           id: 'trains',
           data,
           getPosition: (d) => d.position,
-          getRadius: (d) => 55 + Math.min(1.5, slot.rideRatio[d.ride]) * 25,
-          radiusMinPixels: 2.4,
-          radiusMaxPixels: 8,
+          radiusUnits: 'pixels',
+          getRadius: 2,
           stroked: true,
-          getFillColor: (d) => hexToRgba(d.color, 255),
-          getLineColor: [255, 255, 255, 230],
-          lineWidthMinPixels: 1,
-          updateTriggers: { getRadius: [st.ui.slot, st.sim.scenario] },
+          getFillColor: [255, 255, 255, 255],
+          getLineColor: [9, 12, 20, 200],
+          lineWidthUnits: 'pixels',
+          getLineWidth: 1,
         }),
       );
     }
+    layers.push(...above);
     overlay.setProps({ layers });
   };
 
@@ -99,8 +129,7 @@ export function MapView({ padLeft = 0, padRight = 0 }: { padLeft?: number; padRi
       return;
     }
     mapRef.current = map;
-    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'bottom-right');
-    map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
+    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-left');
 
     const overlay = new MapboxOverlay({
       interleaved: false,
@@ -135,14 +164,33 @@ export function MapView({ padLeft = 0, padRight = 0 }: { padLeft?: number; padRi
       }
     });
     map.on('load', () => setMapReady(true));
-    map.on('zoomend', () => setZoom(map.getZoom()));
+    let lastQ = Math.round(INITIAL.zoom * 4);
+    map.on('zoom', () => {
+      const q = Math.round(map.getZoom() * 4);
+      if (q !== lastQ) {
+        lastQ = q;
+        setZoom(q / 4);
+      }
+    });
+    map.on('moveend', () => setViewVersion((v) => v + 1));
+    map.on('resize', () => setViewVersion((v) => v + 1));
     map.on('click', (e) => onMapClick(e.lngLat.lng, e.lngLat.lat, e.point.x, e.point.y));
     map.on('mousemove', () => {
       const s = useStore.getState();
       map.getCanvas().style.cursor = s.ui.edit.kind !== 'none' ? 'crosshair' : '';
     });
 
+    // 웹폰트가 준비되면 역 이름 글꼴 교체
+    let alive = true;
+    document.fonts
+      ?.load('600 13px "Pretendard Variable"', '김포공항')
+      .then((faces) => {
+        if (alive && faces.length) setFontFamily(LABEL_FONT);
+      })
+      .catch(() => undefined);
+
     return () => {
+      alive = false;
       window.clearTimeout(timer);
       map.remove();
       mapRef.current = null;
@@ -162,13 +210,13 @@ export function MapView({ padLeft = 0, padRight = 0 }: { padLeft?: number; padRi
     map.setStyle(basemapStyle(ui.basemap, ui.vworldKey));
   }, [ui.basemap, ui.vworldKey]);
 
-  // 좌우 패널만큼 지도 중심 보정
+  // 결과 패널만큼 지도 중심 보정
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     const mobile = window.innerWidth <= 900;
-    map.easeTo({ padding: { left: mobile ? 0 : padLeft, right: mobile ? 0 : padRight, top: 60, bottom: 80 }, duration: 400 });
-  }, [padLeft, padRight]);
+    map.easeTo({ padding: { left: 0, right: mobile ? 0 : padRight, top: 40, bottom: mobile ? 90 : 120 }, duration: 400 });
+  }, [padRight]);
 
   // 2D / 3D
   useEffect(() => {
@@ -179,6 +227,7 @@ export function MapView({ padLeft = 0, padRight = 0 }: { padLeft?: number; padRi
 
   // 정적 레이어
   useEffect(() => {
+    const map = mapRef.current;
     staticRef.current = buildStaticLayers({
       result,
       slot: ui.slot,
@@ -186,15 +235,22 @@ export function MapView({ padLeft = 0, padRight = 0 }: { padLeft?: number; padRi
       hiddenLines: ui.hiddenLines,
       zoom,
       zones,
-      zoneIndex,
       editLine,
       selected: ui.selected,
       dark,
       personsPerHousehold: scenario.settings.personsPerHousehold,
+      fontFamily,
+      project: map
+        ? (lon, lat) => {
+            const p = map.project([lon, lat]);
+            return [p.x, p.y];
+          }
+        : null,
+      viewSize: map ? [map.getContainer().clientWidth, map.getContainer().clientHeight] : [0, 0],
     });
     render();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [result, ui.slot, ui.layers, ui.hiddenLines, zoom, zones, zoneIndex, editLine, ui.selected, dark, mapReady, scenario.settings.personsPerHousehold]);
+  }, [result, ui.slot, ui.layers, ui.hiddenLines, zoom, zones, editLine, ui.selected, dark, mapReady, scenario.settings.personsPerHousehold, fontFamily, viewVersion]);
 
   useEffect(() => {
     runsRef.current = result ? prepareRuns(result.network) : [];
@@ -210,7 +266,7 @@ export function MapView({ padLeft = 0, padRight = 0 }: { padLeft?: number; padRi
     let last = performance.now();
     let lastDraw = 0;
     const tick = (now: number) => {
-      const dt = (now - last) / 1000;
+      const dt = Math.min(0.25, (now - last) / 1000);
       last = now;
       simTimeRef.current += dt * SIM_MIN_PER_SEC;
       if (now - lastDraw > 33) {
@@ -247,7 +303,10 @@ export function MapView({ padLeft = 0, padRight = 0 }: { padLeft?: number; padRi
         }
         st.addStop(line.id, { name: snap.name, lon: snap.lon, lat: snap.lat, ref: EXISTING_STATIONS.includes(snap) ? snap.name : undefined });
       } else {
-        st.addStop(line.id, { name: `${line.name} ${line.stops.length + 1}`, lon: +lon.toFixed(5), lat: +lat.toFixed(5) });
+        const letter = String.fromCharCode(65 + (Math.max(0, st.scenario.customLines.findIndex((l) => l.id === line.id)) % 26));
+        let n = line.stops.length + 1;
+        while (line.stops.some((s) => s.name === `${letter}${n}`)) n++;
+        st.addStop(line.id, { name: `${letter}${n}`, lon: +lon.toFixed(5), lat: +lat.toFixed(5) });
       }
       return;
     }
@@ -255,11 +314,12 @@ export function MapView({ padLeft = 0, padRight = 0 }: { padLeft?: number; padRi
       const id = `user-${Date.now().toString(36)}`;
       st.addUserZone({ id, name: `새 단지 ${st.scenario.userZones.length + 1}`, lon: +lon.toFixed(5), lat: +lat.toFixed(5), households: 3000, source: 'user', region: guessRegion(lon, lat) });
       st.setUi({ edit: { kind: 'none' }, tab: 'zones' });
-      st.showToast('단지를 추가했습니다. 왼쪽 단지 탭에서 세대수를 조정하세요');
+      st.showToast('단지를 추가했습니다. 단지·인구 탭에서 세대수를 조정하세요');
       return;
     }
     const overlay = overlayRef.current;
-    if (!overlay) return;
+    const res = st.sim.scenario;
+    if (!overlay || !res) return;
     const info = overlay.pickObject({ x, y, radius: 6 });
     if (!info || !info.layer) {
       st.setUi({ selected: null });
@@ -269,36 +329,50 @@ export function MapView({ padLeft = 0, padRight = 0 }: { padLeft?: number; padRi
     if (id === 'stations' || id === 'boardings') st.setUi({ selected: { type: 'complex', index: (info.object as Complex).id } });
     else if (id === 'zones') {
       const z = info.object as Zone;
-      st.setUi({ selected: { type: 'zone', index: buildZones(st.scenario).findIndex((x) => x.id === z.id) } });
-    } else if (id === 'walls' || id === 'line-base') st.setUi({ selected: { type: 'ride', index: (info.object as { i: number }).i } });
+      st.setUi({ selected: { type: 'zone', index: buildZones(st.scenario).findIndex((v) => v.id === z.id) } });
+    } else if (id === 'walls' || id === 'line-base' || id === 'line-plan') {
+      st.setUi({ selected: { type: 'ride', index: peakRide(res.slots[st.ui.slot], (info.object as SegDatum).p) } });
+    }
   }
 
-  function tooltip(info: PickingInfo): { html: string; style?: Record<string, string> } | null {
+  function tooltip(info: PickingInfo): { html: string; className: string; style: Record<string, string> } | null {
     const st = useStore.getState();
     const res = st.sim.scenario;
-    if (!info.object || !info.layer || !res) return null;
+    if (!info.object || !info.layer || !res || st.ui.edit.kind !== 'none') return null;
     const sl = res.slots[st.ui.slot];
-    const style = { backgroundColor: 'rgba(14,18,30,0.94)', color: '#e8ecf5', fontSize: '12px', borderRadius: '8px', padding: '8px 10px', border: '1px solid #2c3550' };
     const id = info.layer.id;
-    if (id === 'walls' || id === 'line-base') {
-      const i = (info.object as { i: number }).i;
+    const wrap = (html: string) => ({ html, className: 'map-tip', style: TIP_STYLE });
+
+    if (id === 'walls' || id === 'line-base' || id === 'line-plan') {
+      const p = (info.object as SegDatum).p;
+      const i = peakRide(sl, p);
+      const j = i ^ 1;
       const r = res.network.rides[i];
+      const back = res.network.rides[j];
       const ratio = sl.rideRatio[i];
       const bi = baselineIndexRef.current.get(`${r.lineId}|${r.aName}|${r.bName}`);
       const base = bi !== undefined && st.sim.baseline ? st.sim.baseline.slots[st.ui.slot].rideRatio[bi] : undefined;
-      const delta = base !== undefined && r.kind === 'existing' ? ` <span style="color:#9aa6c4">(현재 ${pct(base)})</span>` : '';
-      return {
-        html: `<b>${r.lineName}</b> ${r.aName} → ${r.bName}<br/>혼잡도 <b>${pct(ratio)}</b> · ${congestionLabel(ratio)}${delta}<br/>시간당 ${fmt(sl.rideLoad[i])}명 / 정원 ${fmt(r.capPerHour)}명<br/><span style="color:#9aa6c4">${sl.label} 출발 기준 · 열차 ${r.tph.toFixed(0)}회/시</span>`,
-        style,
-      };
+      const baseTxt = base !== undefined && r.kind === 'existing' && Math.abs(base - ratio) >= 0.005 ? `<div class="tip-sub">현재(2026) ${pct(base)} → 시나리오 ${pct(ratio)}</div>` : '';
+      return wrap(
+        `<div class="tip-title"><i style="background:${esc(r.color)}"></i>${esc(r.lineName)}</div>` +
+          `<div class="tip-row"><span>${esc(r.aName)} → ${esc(r.bName)}</span><b>${pct(ratio)}</b>${pill(ratio)}</div>` +
+          (back ? `<div class="tip-row dim"><span>${esc(back.aName)} → ${esc(back.bName)}</span><b>${pct(sl.rideRatio[j])}</b></div>` : '') +
+          `<div class="tip-sub">${sl.label} 출발 · 시간당 ${fmt(sl.rideLoad[i])}명 / 정원 ${fmt(r.capPerHour)}명</div>` +
+          baseTxt,
+      );
     }
     if (id === 'stations' || id === 'boardings') {
       const c = info.object as Complex;
-      const lines = c.lineIds.map((lid) => res.network.lines.find((l) => l.id === lid)?.name ?? lid).join(', ');
-      return {
-        html: `<b>${c.name}</b>${c.tentative ? ' <span style="color:#f5c26b">(가칭·개략 위치)</span>' : ''}<br/>${lines}<br/>승차(환승 포함) 시간당 ${fmt(sl.boardings[c.id])}명`,
-        style,
-      };
+      const lines = c.lineIds
+        .map((lid) => res.network.lines.find((l) => l.id === lid))
+        .filter((l): l is NonNullable<typeof l> => !!l)
+        .map((l) => `<span class="tip-line"><i style="background:${esc(l.color)}"></i>${esc(l.name)}</span>`)
+        .join('');
+      return wrap(
+        `<div class="tip-title">${esc(c.name)}역${c.tentative ? '<em>가칭 · 개략 위치</em>' : ''}</div>` +
+          `<div class="tip-lines">${lines}</div>` +
+          `<div class="tip-sub">${sl.label} 출발 · 승차(환승 포함) 시간당 ${fmt(sl.boardings[c.id])}명</div>`,
+      );
     }
     if (id === 'zones') {
       const z = info.object as Zone;
@@ -307,10 +381,13 @@ export function MapView({ padLeft = 0, padRight = 0 }: { padLeft?: number; padRi
       const mins = zi !== undefined ? sl.zoneRailMin[zi] : undefined;
       const access = zi !== undefined && sl.zoneAccess[zi] >= 0 ? res.network.complexes[sl.zoneAccess[zi]]?.name : undefined;
       const pop = z.households * st.scenario.settings.personsPerHousehold;
-      return {
-        html: `<b>${z.name}</b><br/>${fmt(z.households)}세대 · 약 ${fmt(pop)}명${share !== undefined ? `<br/>장거리 출근 중 철도 이용 ${pct(share)}` : ''}${mins ? ` · 평균 ${Math.round(mins)}분(체감)` : ''}${access ? `<br/>주 이용역: ${access}` : ''}`,
-        style,
-      };
+      const kind = z.source === 'scenario' ? '<em>개발 예정</em>' : z.source === 'user' ? '<em>직접 추가</em>' : '';
+      return wrap(
+        `<div class="tip-title">${esc(z.name)}${kind}</div>` +
+          `<div class="tip-row"><span>${fmt(z.households)}세대</span><b>약 ${fmt(pop)}명</b></div>` +
+          (share !== undefined ? `<div class="tip-sub">장거리 출근 중 철도 이용 ${pct(share)}${mins ? ` · 평균 ${Math.round(mins)}분(체감)` : ''}</div>` : '') +
+          (access ? `<div class="tip-sub">주 이용역 ${esc(access)}</div>` : ''),
+      );
     }
     return null;
   }

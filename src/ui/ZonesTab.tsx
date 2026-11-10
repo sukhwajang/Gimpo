@@ -3,6 +3,7 @@ import { DETAIL_ZONES, DEV_SCENARIOS, SCENARIO_ZONES } from '../data/apartments'
 import { useStore } from '../state/store';
 import type { Zone } from '../types';
 import { fmt } from './format';
+import { Icon, Switch } from './kit';
 
 const REGION_ORDER = ['김포', '검단', '인천 서구', '계양', '강서', '양천'];
 const ESTIMATED_REGIONS = ['검단', '인천 서구'];
@@ -109,93 +110,124 @@ export function ZonesTab() {
   };
 
   return (
-    <div className="panel-body">
-      <div className="section-title">개발 예정 단지 (시나리오)</div>
-      {DEV_SCENARIOS.map((d) => {
-        const total = SCENARIO_ZONES.filter((z) => z.scenario === d.id).reduce((a, z) => a + hh(z), 0);
-        return (
-          <label key={d.id} className={`dev-row ${active[d.id] ? 'active' : ''}`}>
-            <span className="switch small">
-              <input type="checkbox" checked={!!active[d.id]} onChange={() => toggleDev(d.id)} />
-              <span />
-            </span>
-            <span className="dev-text">
-              <span>
-                <b>{d.name}</b> <span className="badge">{d.status}</span>
-              </span>
-              <span className="muted small">
-                {d.description} · 모형 반영 {fmt(total)}세대
-              </span>
-            </span>
-          </label>
-        );
-      })}
+    <div className="tab-body">
+      <section>
+        <header className="sec-head">
+          <h2>개발 예정 단지</h2>
+          <span className="count">
+            {DEV_SCENARIOS.filter((d) => active[d.id]).length} / {DEV_SCENARIOS.length} 켜짐
+          </span>
+        </header>
+        <p className="sec-desc">입주를 가정해 수요에 더합니다. 지도에는 분홍색 기둥으로 나타납니다.</p>
+        {DEV_SCENARIOS.map((d) => {
+          const total = SCENARIO_ZONES.filter((z) => z.scenario === d.id).reduce((a, z) => a + hh(z), 0);
+          return (
+            <article key={d.id} className={`plan dev ${active[d.id] ? 'on' : ''}`}>
+              <div className="plan-head">
+                <div className="plan-main static">
+                  <span className="plan-name">{d.name}</span>
+                  <span className="plan-meta">
+                    <span className="badge">{d.status}</span>
+                    <span className="plan-year">{fmt(total)}세대</span>
+                  </span>
+                </div>
+                <Switch checked={!!active[d.id]} onChange={() => toggleDev(d.id)} label={`${d.name} ${active[d.id] ? '끄기' : '켜기'}`} />
+              </div>
+              <p className="dev-desc">{d.description}</p>
+            </article>
+          );
+        })}
+      </section>
 
-      <div className="section-title">내가 추가한 단지</div>
-      {userZones.map((z) => (
-        <div key={z.id} className="zone-row user">
-          <input className="text" value={z.name} onChange={(e) => updateUser(z.id, { name: e.target.value })} aria-label="단지 이름" />
-          <input type="number" value={z.households} min={0} step={100} onChange={(e) => updateUser(z.id, { households: Math.max(0, Number(e.target.value) || 0) })} aria-label="세대수" />
-          <span className="muted small">세대</span>
-          <button className="icon-btn danger" onClick={() => removeUser(z.id)} aria-label="삭제">
-            ×
-          </button>
-        </div>
-      ))}
-      <div className="row wrap">
-        <button className={edit.kind === 'zone' ? 'primary' : ''} onClick={() => setUi({ edit: edit.kind === 'zone' ? { kind: 'none' } : { kind: 'zone' } })}>
-          {edit.kind === 'zone' ? '지도를 클릭하세요… (취소)' : '+ 지도에서 단지 추가'}
-        </button>
-        <button onClick={() => fileRef.current?.click()}>CSV 불러오기</button>
-        <button onClick={exportCsv}>CSV 내보내기</button>
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".csv,text/csv"
-          hidden
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) onFile(f);
-            e.target.value = '';
-          }}
-        />
-      </div>
-      <p className="note">CSV 열: name, lat, lon, households (선택: region). 공공데이터포털 공동주택 정보를 정리해 넣으면 추정치 대신 실제 세대수로 계산합니다.</p>
-
-      <div className="section-title">생활권별 아파트 세대수 (수정 가능)</div>
-      {REGION_ORDER.map((region) => {
-        const zones = DETAIL_ZONES.filter((z) => z.region === region);
-        const sum = zones.reduce((a, z) => a + hh(z), 0);
-        return (
-          <details key={region} className="region" open={region === '김포'}>
-            <summary>
-              <b>
-                {region} {ESTIMATED_REGIONS.includes(region) && <span className="tag">추정</span>}
-              </b>
-              <span className="muted small">
-                {fmt(sum)}세대 · 약 {fmt(sum * pph)}명
-              </span>
-            </summary>
-            {zones.map((z) => (
-              <div key={z.id} className="zone-row">
-                <span className="zone-name">{z.name}</span>
-                <input type="number" value={hh(z)} min={0} step={500} onChange={(e) => setHh(z.id, Number(e.target.value) || 0)} aria-label={`${z.name} 세대수`} />
-                {overrides[z.id] !== undefined ? (
-                  <button className="icon-btn" onClick={() => setHh(z.id, null)} title={`기본값 ${fmt(z.households)}`}>
-                    ↺
-                  </button>
-                ) : (
-                  <span className="icon-spacer" />
-                )}
+      <section>
+        <header className="sec-head">
+          <h2>내가 추가한 단지</h2>
+          {userZones.length > 0 && <span className="count">{userZones.length}개</span>}
+        </header>
+        {userZones.length > 0 && (
+          <div className="list">
+            {userZones.map((z) => (
+              <div key={z.id} className="zone-row user">
+                <input className="text grow" value={z.name} onChange={(e) => updateUser(z.id, { name: e.target.value })} aria-label="단지 이름" />
+                <span className="num-input">
+                  <input type="number" value={z.households} min={0} step={100} onChange={(e) => updateUser(z.id, { households: Math.max(0, Number(e.target.value) || 0) })} aria-label="세대수" />
+                  <em>세대</em>
+                </span>
+                <button className="icon-btn danger" onClick={() => removeUser(z.id)} aria-label={`${z.name} 삭제`}>
+                  <Icon name="x" size={14} />
+                </button>
               </div>
             ))}
-          </details>
-        );
-      })}
-      <p className="note">
-        김포·계양·강서·양천은 단지별 세대수를 동 단위로 합산한 값이고, 검단·인천 서구는 추정치입니다. 그 밖의 서울·인천·경기 지역은 시군구 가구 수를 역별로 나눈 배경 수요로
-        계산합니다 (지도에는 표시하지 않음).
-      </p>
+          </div>
+        )}
+        <div className="btn-row">
+          <button className={`btn ${edit.kind === 'zone' ? 'primary' : 'dashed'}`} onClick={() => setUi({ edit: edit.kind === 'zone' ? { kind: 'none' } : { kind: 'zone' } })}>
+            <Icon name="pin" /> {edit.kind === 'zone' ? '지도를 클릭하세요 (취소)' : '지도에서 단지 추가'}
+          </button>
+          <button className="btn" onClick={() => fileRef.current?.click()}>
+            <Icon name="upload" /> CSV 불러오기
+          </button>
+          <button className="btn" onClick={exportCsv}>
+            <Icon name="download" /> CSV 내보내기
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".csv,text/csv"
+            hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) onFile(f);
+              e.target.value = '';
+            }}
+          />
+        </div>
+        <p className="hint">CSV 열: name, lat, lon, households (선택: region). 공공데이터포털 공동주택 자료를 넣으면 실제 세대수로 계산합니다.</p>
+      </section>
+
+      <section>
+        <header className="sec-head">
+          <h2>생활권별 아파트 세대수</h2>
+        </header>
+        <p className="sec-desc">숫자를 바꾸면 바로 다시 계산합니다.</p>
+        {REGION_ORDER.map((region) => {
+          const zones = DETAIL_ZONES.filter((z) => z.region === region);
+          const sum = zones.reduce((a, z) => a + hh(z), 0);
+          return (
+            <details key={region} className="region" open={region === '김포'}>
+              <summary>
+                <span className="region-name">
+                  {region} {ESTIMATED_REGIONS.includes(region) && <span className="tag">추정</span>}
+                </span>
+                <span className="list-meta">
+                  {fmt(sum)}세대 · 약 {fmt(sum * pph)}명
+                </span>
+                <Icon name="chevronDown" size={14} />
+              </summary>
+              <div className="region-body">
+                {zones.map((z) => (
+                  <div key={z.id} className="zone-row">
+                    <span className="zone-name">{z.name}</span>
+                    {overrides[z.id] !== undefined && (
+                      <button className="icon-btn" onClick={() => setHh(z.id, null)} title={`기본값 ${fmt(z.households)}세대로 되돌리기`} aria-label="기본값으로 되돌리기">
+                        <Icon name="reset" size={13} />
+                      </button>
+                    )}
+                    <span className="num-input">
+                      <input type="number" value={hh(z)} min={0} step={500} onChange={(e) => setHh(z.id, Number(e.target.value) || 0)} aria-label={`${z.name} 세대수`} />
+                      <em>세대</em>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </details>
+          );
+        })}
+        <p className="hint">
+          김포·계양·강서·양천은 단지별 세대수를 동 단위로 합산한 값이고, 검단·인천 서구는 추정치입니다. 그 밖의 서울·인천·경기 지역은 시군구 가구 수를 역별로 나눈 배경 수요로 계산합니다
+          (지도에는 표시하지 않음).
+        </p>
+      </section>
     </div>
   );
 }

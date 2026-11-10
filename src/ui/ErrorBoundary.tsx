@@ -25,11 +25,12 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
           <h2>화면을 그리는 중 오류가 났습니다</h2>
           <p className="muted">아래 내용을 알려주시면 원인을 찾는 데 도움이 됩니다.</p>
           <pre>{String(error.message || error)}</pre>
-          <div className="row wrap">
-            <button className="primary" onClick={() => location.reload()}>
+          <div className="btn-row">
+            <button className="btn primary" onClick={() => location.reload()}>
               새로고침
             </button>
             <button
+              className="btn"
               onClick={() => {
                 try {
                   Object.keys(localStorage)

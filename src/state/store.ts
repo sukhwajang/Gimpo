@@ -190,3 +190,15 @@ export const useStore = create<Store>((set, get) => ({
   },
   setSim: (patch) => set((s) => ({ sim: { ...s.sim, ...patch } })),
 }));
+
+/** 현재(2026) 상태에서 무언가 바꿨는지 — 계획·내 노선·개발 단지·운행 조정·추가 단지 */
+export function scenarioChanged(s: Store): boolean {
+  const sc = s.scenario;
+  return (
+    Object.values(sc.activePlans).some(Boolean) ||
+    Object.values(sc.activeScenarios).some(Boolean) ||
+    sc.customLines.some((l) => l.visible && l.stops.length >= 2) ||
+    Object.keys(sc.lineOverrides).length > 0 ||
+    sc.userZones.length > 0
+  );
+}
