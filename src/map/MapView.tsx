@@ -30,6 +30,7 @@ export function MapView({ padLeft = 0, padRight = 0 }: { padLeft?: number; padRi
   const simTimeRef = useRef(0);
   const [zoom, setZoom] = useState(INITIAL.zoom);
   const [mapReady, setMapReady] = useState(false);
+  const [mapError, setMapError] = useState<string | null>(null);
 
   const result = useStore((s) => s.sim.scenario);
   const baseline = useStore((s) => s.sim.baseline);
@@ -79,16 +80,24 @@ export function MapView({ padLeft = 0, padRight = 0 }: { padLeft?: number; padRi
   useEffect(() => {
     if (!containerRef.current) return;
     const st = useStore.getState();
-    const map = new maplibregl.Map({
-      container: containerRef.current,
-      style: basemapStyle(st.ui.basemap, st.ui.vworldKey),
-      center: INITIAL.center,
-      zoom: INITIAL.zoom,
-      pitch: st.ui.is3d ? INITIAL.pitch : 0,
-      bearing: st.ui.is3d ? INITIAL.bearing : 0,
-      maxPitch: 75,
-      attributionControl: { compact: true },
-    });
+    let map: maplibregl.Map;
+    try {
+      map = new maplibregl.Map({
+        container: containerRef.current,
+        style: basemapStyle(st.ui.basemap, st.ui.vworldKey),
+        center: INITIAL.center,
+        zoom: INITIAL.zoom,
+        pitch: st.ui.is3d ? INITIAL.pitch : 0,
+        bearing: st.ui.is3d ? INITIAL.bearing : 0,
+        maxPitch: 75,
+        attributionControl: { compact: true },
+      });
+    } catch (e) {
+      // WebGL을 쓸 수 없는 브라우저(하드웨어 가속 꺼짐 등) — 패널은 계속 동작
+      console.error(e);
+      setMapError(String((e as Error)?.message ?? e));
+      return;
+    }
     mapRef.current = map;
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'bottom-right');
     map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
@@ -311,7 +320,21 @@ export function MapView({ padLeft = 0, padRight = 0 }: { padLeft?: number; padRi
   const zoneIndexRef = useRef(zoneIndex);
   zoneIndexRef.current = zoneIndex;
 
-  return <div ref={containerRef} className="map" />;
+  return (
+    <>
+      <div ref={containerRef} className="map" />
+      {mapError && (
+        <div className="map-error">
+          <b>이 브라우저에서 3D 지도를 켤 수 없습니다.</b>
+          <p>
+            지도는 WebGL(그래픽 가속)이 필요합니다. 크롬·엣지라면 설정 → 시스템 → <b>그래픽 가속 사용</b>을 켜고 다시 열어 주세요. 카카오톡 같은 앱 안의 브라우저라면 크롬으로 열어 주세요.
+            결과 패널의 계산은 그대로 볼 수 있습니다.
+          </p>
+          <code>{mapError}</code>
+        </div>
+      )}
+    </>
+  );
 }
 
 function guessRegion(lon: number, lat: number): string | undefined {
