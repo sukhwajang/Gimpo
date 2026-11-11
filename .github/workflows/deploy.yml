@@ -1,4 +1,8 @@
-name: Deploy to GitHub Pages
+name: Deploy to Cloudflare Pages
+
+# main 에 푸시하면 테스트 → 빌드 → Cloudflare Pages(gimpo-metro.pages.dev) 배포.
+# 저장소 Settings → Secrets and variables → Actions 에 CLOUDFLARE_API_TOKEN 이 있어야 한다
+# (권한: Account · Cloudflare Pages · Edit, Account · Account Settings · Read).
 
 on:
   push:
@@ -7,15 +11,13 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages
+  group: deploy
   cancel-in-progress: true
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,17 +28,21 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Deploy to Cloudflare Pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          WRANGLER_SEND_METRICS: 'false'
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::warning::CLOUDFLARE_API_TOKEN 이 없어 배포를 건너뜁니다. 저장소 Settings → Secrets and variables → Actions 에 추가해 주세요."
+            exit 0
+          fi
+          # 계정 ID는 토큰으로 조회한다 (저장소에 남기지 않음)
+          CLOUDFLARE_ACCOUNT_ID=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" https://api.cloudflare.com/client/v4/accounts | jq -r '.result[0].id')
+          echo "::add-mask::$CLOUDFLARE_ACCOUNT_ID"
+          export CLOUDFLARE_ACCOUNT_ID
+          npx -y wrangler@4.160.0 pages deploy dist \
+            --project-name gimpo-metro \
+            --branch main \
+            --commit-hash "$GITHUB_SHA" \
+            --commit-message "$(git log -1 --pretty=%s)"

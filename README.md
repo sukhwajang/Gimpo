@@ -30,10 +30,16 @@ npm run build:single   # dist-single/index.html 하나에 모든 코드·데이�
 
 만들어진 `index.html` 을 크롬·엣지에서 더블클릭하면 바로 열립니다. 배경지도는 인터넷이 연결돼 있어야 보이고, 연결이 안 되면 행정경계만 있는 오프라인 지도로 바뀝니다.
 
-### GitHub Pages 배포
+### 배포 (Cloudflare Pages)
 
-`.github/workflows/deploy.yml` 이 `main` 브랜치에 푸시될 때 테스트 → 빌드 → Pages 배포를 합니다.
-저장소 **Settings → Pages → Source** 를 **GitHub Actions** 로 한 번 바꿔 주면 `https://<계정>.github.io/<저장소>/` 로 열립니다.
+`.github/workflows/deploy.yml` 이 `main` 브랜치에 푸시될 때 테스트 → 빌드 → Cloudflare Pages 배포를 합니다. 주소는 https://gimpo-metro.pages.dev 입니다.
+
+처음 한 번만 Cloudflare API 토큰을 저장소 시크릿으로 넣어 주면 됩니다.
+1. Cloudflare 대시보드 → My Profile → API Tokens → Create Token → Create Custom Token
+2. 권한: `Account · Cloudflare Pages · Edit`, `Account · Account Settings · Read`
+3. GitHub 저장소 **Settings → Secrets and variables → Actions → New repository secret**, 이름 `CLOUDFLARE_API_TOKEN`
+
+시크릿이 없으면 테스트와 빌드만 하고 배포는 건너뜁니다.
 
 ## API 키 — 무엇을 받아야 하나
 
