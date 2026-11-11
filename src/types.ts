@@ -23,6 +23,8 @@ export interface LineParams {
 
 export interface Sequence {
   tph: number;
+  /** 본선과 따로 다니는 셔틀 지선이면 별도 운행계통 id (본선과는 환승해야 한다) */
+  service?: string;
   /** 모델 밖 배경 승객 (첨두 시간당, 한 방향) */
   bgPax?: number;
   stops: Stop[];
@@ -64,6 +66,8 @@ export interface PlanDef {
   description: string;
   sources: { title: string; url: string }[];
   serviceId?: string;
+  /** 이 계획이 전제로 하는 다른 계획 id (예: 선로를 함께 쓰는 노선) */
+  requires?: string[];
   params: LineParams;
   stops: Stop[];
   options?: PlanOption[];

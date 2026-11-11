@@ -3,7 +3,7 @@ import { PathStyleExtension, type PathStyleExtensionProps } from '@deck.gl/exten
 import type { Layer } from '@deck.gl/core';
 import type { Complex, Network, RideEdge } from '../sim/network';
 import type { SimResult, SlotResult } from '../sim/simulate';
-import { segmentRibbon } from '../sim/geo';
+import { offsetSegment, segmentRibbon } from '../sim/geo';
 import type { LayerToggles, UiState } from '../state/store';
 import type { CustomLine, LonLat, Zone } from '../types';
 import { BOUNDARIES } from './basemaps';
@@ -48,6 +48,8 @@ export interface LayerInput {
 export interface SegDatum {
   p: number;
   ride: RideEdge;
+  /** 같은 선로를 여러 노선이 쓸 때 나란히 그리기 위한 옆 자리 (0 = 가운데, 진행 방향 오른쪽이 +) */
+  lane: number;
 }
 
 /** 그 구간에서 더 혼잡한 방향의 ride index */
@@ -61,10 +63,42 @@ function segments(net: Network): SegDatum[] {
   let d = segCache.get(net);
   if (!d) {
     d = [];
-    for (let p = 0; 2 * p < net.rides.length; p++) d.push({ p, ride: net.rides[2 * p] });
+    for (let p = 0; 2 * p < net.rides.length; p++) d.push({ p, ride: net.rides[2 * p], lane: 0 });
+    // 같은 두 역을 잇는 구간이 여럿이면(선로 공용) 가운데를 기준으로 좌우로 벌린다
+    const groups = new Map<string, SegDatum[]>();
+    for (const x of d) {
+      const key = x.ride.a < x.ride.b ? `${x.ride.a}|${x.ride.b}` : `${x.ride.b}|${x.ride.a}`;
+      const g = groups.get(key);
+      if (g) g.push(x);
+      else groups.set(key, [x]);
+    }
+    for (const g of groups.values()) {
+      if (g.length < 2) continue;
+      g.forEach((x, k) => {
+        // 구간이 반대 방향으로 정의된 노선은 부호를 뒤집어 같은 쪽 기준으로 맞춘다
+        x.lane = (k - (g.length - 1) / 2) * (x.ride.a < x.ride.b ? 1 : -1);
+      });
+    }
     segCache.set(net, d);
   }
   return d;
+}
+
+/** 나란히 그리는 노선 사이 간격 (px) */
+const LANE_PX = 4.8;
+const laneShift = (d: SegDatum, zoom: number) => d.lane * LANE_PX * metersPerPixel(zoom);
+
+const pathCache = new WeakMap<Network, Map<number, [LonLat, LonLat][]>>();
+/** 구간별 선 좌표 — 선로 공용 구간은 줌 단계에 맞춰 옆으로 비켜 놓는다 */
+function linePaths(net: Network, bucket: number): [LonLat, LonLat][] {
+  let m = pathCache.get(net);
+  if (!m) pathCache.set(net, (m = new Map()));
+  let f = m.get(bucket);
+  if (!f) {
+    f = segments(net).map((d) => (d.lane ? offsetSegment(d.ride.path[0], d.ride.path[1], laneShift(d, bucket)) : d.ride.path));
+    m.set(bucket, f);
+  }
+  return f;
 }
 
 /** 줌 단계별 벽 두께 (m): 화면에서 약 1.8px 로 보이도록 */
@@ -80,7 +114,10 @@ function fins(net: Network, bucket: number): LonLat[][] {
   let f = m.get(bucket);
   if (!f) {
     const w = finWidth(bucket);
-    f = segments(net).map((d) => segmentRibbon(d.ride.path[0], d.ride.path[1], -w / 2, w / 2, w * 2.4));
+    f = segments(net).map((d) => {
+      const off = laneShift(d, bucket);
+      return segmentRibbon(d.ride.path[0], d.ride.path[1], off - w / 2, off + w / 2, w * 2.4);
+    });
     m.set(bucket, f);
   }
   return f;
@@ -185,46 +222,50 @@ export function buildStaticLayers(inp: LayerInput): StaticLayers {
     const solid = segs.filter((d) => d.ride.kind !== 'plan');
     const plan = segs.filter((d) => d.ride.kind === 'plan');
     const widthOf = (d: SegDatum) => (d.ride.kind === 'existing' ? 3.6 : d.ride.kind === 'plan' ? 3.8 : 4.4);
+    const paths = linePaths(net, bucket);
+    const pathOf = (d: SegDatum) => paths[d.p];
 
     below.push(
       // 계획·내 노선은 은은한 후광으로 구분
       new PathLayer<SegDatum>({
         id: 'line-glow',
         data: segs.filter((d) => d.ride.kind !== 'existing'),
-        getPath: (d) => d.ride.path,
+        getPath: pathOf,
         getColor: (d) => hexToRgba(d.ride.color, 46),
         getWidth: 11,
         widthUnits: 'pixels',
         capRounded: true,
         jointRounded: true,
+        updateTriggers: { getPath: bucket },
       }),
       new PathLayer<SegDatum>({
         id: 'line-casing',
         data: segs,
-        getPath: (d) => d.ride.path,
+        getPath: pathOf,
         getColor: ink,
         getWidth: (d) => widthOf(d) + 2.6,
         widthUnits: 'pixels',
         capRounded: true,
         jointRounded: true,
-        updateTriggers: { getColor: dark },
+        updateTriggers: { getColor: dark, getPath: bucket },
       }),
       new PathLayer<SegDatum>({
         id: 'line-base',
         data: solid,
-        getPath: (d) => d.ride.path,
+        getPath: pathOf,
         getColor: (d) => hexToRgba(d.ride.color, 255),
         getWidth: widthOf,
         widthUnits: 'pixels',
         capRounded: true,
         jointRounded: true,
         pickable: true,
+        updateTriggers: { getPath: bucket },
       }),
       // 계획 노선은 점선
       new PathLayer<SegDatum, PathStyleExtensionProps<SegDatum>>({
         id: 'line-plan',
         data: plan,
-        getPath: (d) => d.ride.path,
+        getPath: pathOf,
         getColor: (d) => hexToRgba(d.ride.color, 255),
         getWidth: widthOf,
         widthUnits: 'pixels',
@@ -232,6 +273,7 @@ export function buildStaticLayers(inp: LayerInput): StaticLayers {
         extensions: [new PathStyleExtension({ dash: true })],
         getDashArray: [3.2, 2],
         dashJustified: true,
+        updateTriggers: { getPath: bucket },
       }),
     );
 

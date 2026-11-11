@@ -124,6 +124,8 @@ export function resolveLines(input: ScenarioInput): LineDef[] {
   });
   for (const plan of PLANS) {
     if (!input.activePlans[plan.id]) continue;
+    // 전제 계획(선로를 함께 쓰는 노선)이 꺼져 있으면 성립하지 않는다
+    if (plan.requires?.some((r) => !input.activePlans[r])) continue;
     const l = planToLine(plan, input.planOptions);
     const o = input.lineOverrides[plan.id];
     if (l) lines.push(o && Object.keys(o).length ? applyParams(l, o) : l);

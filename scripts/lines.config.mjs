@@ -58,6 +58,8 @@ export const LINES /* params.tph·cap·speed, bg */ = [
       ['신도림', '도림천', '양천구청', '신정네거리', '까치산'],
     ],
     branchTph: [26, 8, 8],
+    // 성수·신정지선은 본선과 따로 다니는 셔틀이라 본선과는 환승해야 한다
+    branchService: [null, '2-성수지선', '2-신정지선'],
   },
   {
     id: '3', name: '3호선', color: '#EF7C1C', prefer: ['I1103', 'I4106'],

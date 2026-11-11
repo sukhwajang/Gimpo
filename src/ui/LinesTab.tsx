@@ -71,6 +71,11 @@ function PlanCard({ plan }: { plan: PlanDef }) {
         <div className="plan-body">
           <p className="plan-status">{plan.status}</p>
           <p>{plan.description}</p>
+          {plan.requires && (
+            <p className="hint">
+              함께 켜지는 계획: {plan.requires.map((r) => PLANS.find((p) => p.id === r)?.shortName ?? r).join(', ')}
+            </p>
+          )}
           {plan.options && (
             <div className="opts">
               {plan.options.map((o) => (

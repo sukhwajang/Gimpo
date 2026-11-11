@@ -39,6 +39,42 @@ describe('network', () => {
     expect(on.sequences[0].stops.length).toBe(off.sequences[0].stops.length + 2);
   });
 
+  it('9호선 연장은 5호선 연장이 켜져 있어야 생기고, 개화역에서 9호선과 직결된다', () => {
+    expect(resolveLines({ ...empty, activePlans: { L9X: true } }).find((l) => l.id === 'L9X')).toBeUndefined();
+    const lines = resolveLines({ ...empty, activePlans: { L5X: true, L9X: true }, planOptions: { tongjin: true } });
+    const l5 = lines.find((l) => l.id === 'L5X')!;
+    const l9 = lines.find((l) => l.id === 'L9X')!;
+    // 방화·강서한강공원 대신 개화에서 합류하고 나머지 정거장은 같다 (선택 역 옵션도 함께 따라간다)
+    expect(l9.sequences[0].stops.map((x) => x.name).slice(1)).toEqual(l5.sequences[0].stops.map((x) => x.name).slice(2));
+    const net = buildNetwork(lines);
+    const gaehwa = net.complexes.find((c) => c.name === '개화')!;
+    expect(gaehwa.lineIds).toEqual(expect.arrayContaining(['9', 'L9X']));
+    let boards = 0;
+    for (let e = 0; e < net.eFrom.length; e++) if (net.eKind[e] === 1 && net.eBoardComplex[e] === gaehwa.id) boards++;
+    expect(boards).toBe(1);
+    // 선로를 함께 쓰는 역은 하나의 역으로 묶인다
+    expect(net.complexes.filter((c) => c.name === '전호')).toHaveLength(1);
+    expect(net.complexes.find((c) => c.name === '전호')!.lineIds).toEqual(expect.arrayContaining(['L5X', 'L9X']));
+  });
+
+  it('신정지선은 2호선 본선과 다른 운행계통이고, 김포 연장은 신정지선과 직결된다', () => {
+    const boardsAt = (net: ReturnType<typeof buildNetwork>, name: string) => {
+      const c = net.complexes.find((x) => x.name === name)!;
+      let n = 0;
+      for (let e = 0; e < net.eFrom.length; e++) if (net.eKind[e] === 1 && net.eBoardComplex[e] === c.id) n++;
+      return n;
+    };
+    const baseNet = buildNetwork(EXISTING_LINES);
+    // 신도림: 1호선 + 2호선 본선 + 신정지선 = 승강장 3개 (본선↔지선은 환승)
+    expect(boardsAt(baseNet, '신도림')).toBe(3);
+    expect(boardsAt(baseNet, '까치산')).toBe(2);
+    const net = buildNetwork(resolveLines({ ...empty, activePlans: { L2X: true } }));
+    // 연장 구간은 신정지선 승강장을 그대로 쓴다 → 까치산 승강장 수는 그대로
+    expect(boardsAt(net, '까치산')).toBe(2);
+    expect(net.complexes.find((c) => c.name === '고촌')!.lineIds).toEqual(expect.arrayContaining(['G', 'L2X']));
+    expect(net.complexes.find((c) => c.name === '김포공항')!.lineIds).toContain('L2X');
+  });
+
   it('운영 시나리오는 기존 노선 파라미터를 바꾼다', () => {
     const lines = resolveLines({ ...empty, activePlans: { 'GOLD-OPS': true } });
     expect(lines.find((l) => l.id === 'G')!.params.tph).toBe(28);

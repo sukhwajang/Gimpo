@@ -141,9 +141,10 @@ export function buildNetwork(lines: LineDef[]): Network {
 
   const services: ServiceRun[] = [];
   for (const line of ordered) {
-    const service = line.serviceId ?? line.id;
     const seqs = seqComplexes.get(line.id)!;
     line.sequences.forEach((seq, si) => {
+      // 셔틀 지선(2호선 신정·성수지선)은 본선과 승강장을 따로 둔다 → 본선과는 환승
+      const service = seq.service ?? line.serviceId ?? line.id;
       const cs = seqs[si];
       const run: ServiceRun = { lineId: line.id, color: line.color, kind: line.kind, tph: seq.tph, coords: [], forward: [], backward: [] };
       for (let i = 0; i < cs.length; i++) {

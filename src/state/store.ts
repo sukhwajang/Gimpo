@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { PLANS } from '../data/plans';
 import type { SimResult } from '../sim/simulate';
 import { DEFAULT_SETTINGS, type CustomLine, type LineParams, type SimSettings, type Stop, type Zone } from '../types';
 
@@ -115,8 +116,31 @@ export const useStore = create<Store>((set, get) => ({
   sim: { running: false, scenario: null, baseline: null, error: null },
 
   setScenario: (patch) => set((s) => ({ scenario: { ...s.scenario, ...patch } })),
-  togglePlan: (id) =>
-    set((s) => ({ scenario: { ...s.scenario, activePlans: { ...s.scenario.activePlans, [id]: !s.scenario.activePlans[id] } } })),
+  togglePlan: (id) => {
+    const active = { ...get().scenario.activePlans };
+    const on = !active[id];
+    active[id] = on;
+    // 선로를 함께 쓰는 계획은 같이 켜고, 전제 계획을 끄면 같이 끈다
+    const linked: string[] = [];
+    if (on) {
+      for (const r of PLANS.find((p) => p.id === id)?.requires ?? []) {
+        if (!active[r]) linked.push(r);
+        active[r] = true;
+      }
+    } else {
+      for (const p of PLANS) {
+        if (p.requires?.includes(id) && active[p.id]) {
+          linked.push(p.id);
+          active[p.id] = false;
+        }
+      }
+    }
+    set((s) => ({ scenario: { ...s.scenario, activePlans: active } }));
+    if (linked.length) {
+      const names = linked.map((x) => PLANS.find((p) => p.id === x)?.shortName ?? x).join(', ');
+      get().showToast(on ? `선로를 함께 쓰는 ${names}도 같이 켰습니다` : `${names}도 같이 껐습니다`);
+    }
+  },
   togglePlanOption: (id) =>
     set((s) => ({ scenario: { ...s.scenario, planOptions: { ...s.scenario.planOptions, [id]: !s.scenario.planOptions[id] } } })),
   setLineOverride: (lineId, p) =>

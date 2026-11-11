@@ -67,6 +67,20 @@ describe('calibration', () => {
     expect(g(after)).toBeLessThan(g(before));
   });
 
+  it('9호선 연장·신정지선 연장을 더하면 고촌→김포공항이 더 내려간다', () => {
+    const g = (r: SimResult) => Math.max(...r.slots.map((_, i) => segRatio(r, i, 'G', '고촌', '김포공항')));
+    const both = g(simulate(toSimInput({ ...base, activePlans: { 'GOLD-OPS': true, L5X: true } })));
+    const res9 = simulate(toSimInput({ ...base, activePlans: { 'GOLD-OPS': true, L5X: true, L9X: true } }));
+    const resAll = simulate(toSimInput({ ...base, activePlans: { 'GOLD-OPS': true, L5X: true, L9X: true, L2X: true } }));
+    report(resAll, '증차 + 5호선 + 9호선 + 신정지선');
+    expect(g(res9)).toBeLessThan(both);
+    expect(g(resAll)).toBeLessThan(g(res9));
+    // 연장 구간에 실제로 승객이 탄다
+    const peakOf = (r: SimResult, lineId: string) => Math.max(...r.network.rides.map((x, i) => (x.lineId === lineId ? Math.max(...r.slots.map((s) => s.rideRatio[i])) : 0)));
+    expect(peakOf(resAll, 'L9X')).toBeGreaterThan(0.1);
+    expect(peakOf(resAll, 'L2X')).toBeGreaterThan(0.1);
+  });
+
   it('여러 계획 동시 + 개발 시나리오', () => {
     const res = simulate(
       toSimInput({

@@ -88,7 +88,8 @@ const existing = LINES.map((line) => {
       if (d > 9000) problems.push(`역간 거리 큼(${Math.round(d)}m): ${line.name} ${stops[i - 1].name}-${stops[i].name}`);
     }
     const tph = line.branchTph ? line.branchTph[si] : line.params.tph;
-    return { tph, bgPax: Math.round((line.params.bg ?? 0) * tph * line.params.cap), stops };
+    const service = line.branchService?.[si] ?? undefined;
+    return { tph, ...(service ? { service } : {}), bgPax: Math.round((line.params.bg ?? 0) * tph * line.params.cap), stops };
   });
   return {
     id: line.id,
