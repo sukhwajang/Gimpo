@@ -16,5 +16,15 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <!-- 방문자 수 집계 (Cloudflare Web Analytics, 쿠키 없음). 배포 주소에서만 켜고 로컬·파일 실행은 세지 않는다 -->
+    <script>
+      if (location.hostname === 'gimpo-metro.pages.dev') {
+        var s = document.createElement('script');
+        s.defer = true;
+        s.src = 'https://static.cloudflareinsights.com/beacon.min.js';
+        s.setAttribute('data-cf-beacon', '{"token": "5dafa3110b614717b722e7274d03ac2b"}');
+        document.body.appendChild(s);
+      }
+    </script>
   </body>
 </html>

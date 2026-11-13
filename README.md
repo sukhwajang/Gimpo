@@ -41,6 +41,8 @@ npm run build:single   # dist-single/index.html 하나에 모든 코드·데이�
 
 시크릿이 없으면 테스트와 빌드만 하고 배포는 건너뜁니다.
 
+방문자 수는 Cloudflare 대시보드 → **Web Analytics** → `gimpo-metro.pages.dev` 에서 봅니다. 집계 스크립트는 배포 주소에서만 켜지고 로컬·파일 실행은 세지 않습니다.
+
 ## API 키 — 무엇을 받아야 하나
 
 **키 없이도 앱은 전부 동작합니다.** 기본 배경지도(CARTO, OpenFreeMap)는 키가 필요 없고, 아파트 세대수는 추정치가 내장돼 있습니다. 아래 키는 정확도와 지도 품질을 높이고 싶을 때 받으면 됩니다.
