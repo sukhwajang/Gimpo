@@ -1,0 +1,8 @@
+node_modules
+.next
+.env
+prisma/dev.db
+prisma/dev.db-journal
+*.tsbuildinfo
+next-env.d.ts
+public/samples/sap_sales_sample.xlsx

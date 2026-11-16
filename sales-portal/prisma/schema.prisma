@@ -1,0 +1,260 @@
+// PoC는 SQLite. PostgreSQL 전환 시 provider 를 "postgresql" 로 바꾸고 DATABASE_URL 만 교체하면 된다.
+// (전환을 위해 enum / Json / SQLite 전용 기능은 사용하지 않는다)
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  title     String   @default("")
+  role      String // SALES | HEAD | EXEC | ADMIN
+  business  String? // CHEM | API | CDMO (EXEC/ADMIN 은 null)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  customers     Customer[]
+  opportunities Opportunity[]
+  activities    Activity[]
+  targets       Target[]
+  auditLogs     AuditLog[]
+  stageChanges  StageHistory[]
+  uploads       UploadBatch[]
+}
+
+model Customer {
+  id         String   @id @default(cuid())
+  code       String   @unique // SAP 고객코드
+  name       String
+  country    String
+  businesses String // "CHEM,API" 형태의 다중 선택
+  grade      String   @default("B") // A | B | C
+  ownerId    String
+  owner      User     @relation(fields: [ownerId], references: [id])
+  memo       String   @default("")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  contacts      Contact[]
+  opportunities Opportunity[]
+  activities    Activity[]
+  salesRecords  SalesRecord[]
+
+  @@index([ownerId])
+}
+
+model Contact {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  name       String
+  title      String   @default("")
+  email      String   @default("")
+  phone      String   @default("")
+  createdAt  DateTime @default(now())
+
+  @@index([customerId])
+}
+
+model Product {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  business  String
+  unit      String   @default("kg")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  opportunities Opportunity[]
+}
+
+model Stage {
+  id          String @id @default(cuid())
+  business    String
+  name        String
+  order       Int
+  probability Int // 0~100
+  type        String @default("OPEN") // OPEN | WON | LOST
+
+  opportunities Opportunity[]
+  historyFrom   StageHistory[] @relation("fromStage")
+  historyTo     StageHistory[] @relation("toStage")
+
+  @@index([business, order])
+}
+
+model Opportunity {
+  id                String    @id @default(cuid())
+  business          String
+  title             String // 제품/프로젝트명
+  customerId        String
+  customer          Customer  @relation(fields: [customerId], references: [id])
+  productId         String?
+  product           Product?  @relation(fields: [productId], references: [id])
+  amount            Float
+  currency          String    @default("KRW")
+  expectedCloseDate DateTime?
+  ownerId           String
+  owner             User      @relation(fields: [ownerId], references: [id])
+  stageId           String
+  stage             Stage     @relation(fields: [stageId], references: [id])
+  nextAction        String    @default("")
+  nextActionDue     DateTime?
+  lostReason        String? // PRICE | QUALITY | SCHEDULE | COMPETITOR | OTHER
+  lostNote          String    @default("")
+  auditDate         DateTime? // API: 고객 실사 일정
+  description       String    @default("")
+  closedAt          DateTime?
+  lastActivityAt    DateTime  @default(now())
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  history    StageHistory[]
+  activities Activity[]
+  documents  OpportunityDocument[]
+  milestones Milestone[]
+
+  @@index([business, stageId])
+  @@index([ownerId])
+  @@index([customerId])
+}
+
+model StageHistory {
+  id            String      @id @default(cuid())
+  opportunityId String
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  fromStageId   String?
+  fromStage     Stage?      @relation("fromStage", fields: [fromStageId], references: [id])
+  toStageId     String
+  toStage       Stage       @relation("toStage", fields: [toStageId], references: [id])
+  changedById   String
+  changedBy     User        @relation(fields: [changedById], references: [id])
+  note          String      @default("")
+  changedAt     DateTime    @default(now())
+
+  @@index([opportunityId])
+}
+
+model OpportunityDocument {
+  id            String      @id @default(cuid())
+  opportunityId String
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  docType       String // CoA, DMF, CEP, MSDS ...
+  requested     Boolean     @default(false)
+  provided      Boolean     @default(false)
+  providedAt    DateTime?
+
+  @@unique([opportunityId, docType])
+}
+
+model Milestone {
+  id            String      @id @default(cuid())
+  opportunityId String
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  name          String
+  plannedDate   DateTime?
+  actualDate    DateTime?
+  order         Int         @default(0)
+
+  @@index([opportunityId])
+}
+
+model Activity {
+  id            String       @id @default(cuid())
+  type          String // MEETING | EMAIL | CALL | SAMPLE | DOCUMENT
+  subject       String
+  content       String       @default("")
+  date          DateTime
+  userId        String
+  user          User         @relation(fields: [userId], references: [id])
+  customerId    String
+  customer      Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  opportunityId String?
+  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  createdAt     DateTime     @default(now())
+
+  @@index([customerId])
+  @@index([opportunityId])
+  @@index([date])
+}
+
+model UploadBatch {
+  id           String   @id @default(cuid())
+  fileName     String
+  uploadedById String
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id])
+  totalRows    Int
+  savedRows    Int
+  errorRows    Int
+  createdAt    DateTime @default(now())
+
+  records SalesRecord[]
+}
+
+model SalesRecord {
+  id           String       @id @default(cuid())
+  saleDate     DateTime
+  business     String
+  customerCode String
+  customerName String
+  customerId   String?
+  customer     Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  productCode  String
+  productName  String
+  quantity     Float
+  unit         String
+  amount       Float
+  currency     String
+  amountKrw    Float // 업로드 시점 월별 환율로 환산
+  uploadId     String?
+  upload       UploadBatch? @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+  createdAt    DateTime     @default(now())
+
+  @@index([saleDate])
+  @@index([business, saleDate])
+  @@index([customerId])
+}
+
+model ExchangeRate {
+  id       String @id @default(cuid())
+  year     Int
+  month    Int
+  currency String // USD | EUR (KRW 는 항상 1)
+  rate     Float // 1 외화 = rate 원
+
+  @@unique([year, month, currency])
+}
+
+model Target {
+  id        String  @id @default(cuid())
+  year      Int
+  month     Int
+  business  String
+  userId    String? // null 이면 사업부 목표
+  user      User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amountKrw Float
+
+  @@index([year, business])
+  @@index([userId, year])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userName  String   @default("")
+  action    String // CREATE | UPDATE | DELETE | UPLOAD | STAGE | LOGIN
+  entity    String
+  entityId  String   @default("")
+  summary   String
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
