@@ -1,0 +1,13 @@
+// Cloudflare Workers 배포 설정 (테스트 버전). 로컬 실행(npm run dev)에는 쓰이지 않는다.
+{
+  "name": "sales-portal-poc",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2025-04-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  "d1_databases": [
+    // database_id 는 배포 워크플로가 실제 값으로 바꿔 넣는다
+    { "binding": "DB", "database_name": "sales-portal-poc", "database_id": "00000000-0000-0000-0000-000000000000" }
+  ],
+  "vars": { "DEMO_LOGIN": "true", "AUTH_TRUST_HOST": "true" }
+}

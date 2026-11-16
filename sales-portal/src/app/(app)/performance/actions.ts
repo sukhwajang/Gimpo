@@ -28,16 +28,20 @@ export async function importSales(fileName: string, rows: RawRow[]): Promise<{ o
   const good = checked.filter((r) => r.status !== "ERROR");
   if (good.length === 0) return { ok: false, error: "저장할 수 있는 정상 행이 없습니다." };
   const name = String(fileName || "upload.xlsx").slice(0, 200);
-  const batch = await prisma.$transaction(async (tx) => {
-    const b = await tx.uploadBatch.create({ data: { fileName: name, uploadedById: me.id, totalRows: summary.total, savedRows: good.length, errorRows: summary.error } });
-    await tx.salesRecord.createMany({
+  // 대화형 트랜잭션은 Cloudflare D1 에서 지원되지 않으므로, 실패 시 배치를 지워 되돌린다(행은 cascade 삭제).
+  const batch = await prisma.uploadBatch.create({ data: { fileName: name, uploadedById: me.id, totalRows: summary.total, savedRows: good.length, errorRows: summary.error } });
+  try {
+    await prisma.salesRecord.createMany({
       data: good.map((r) => ({
         saleDate: parseYmd(r.saleDate)!, business: r.normBusiness!, customerCode: r.customerCode, customerName: r.customerName, customerId: customerIds.get(r.customerCode) ?? null,
-        productCode: r.productCode, productName: r.productName, quantity: Number(r.quantity.replace(/,/g, "")), unit: r.unit, amount: Number(r.amount.replace(/,/g, "")), currency: r.currency, amountKrw: r.amountKrw!, uploadId: b.id,
+        productCode: r.productCode, productName: r.productName, quantity: Number(r.quantity.replace(/,/g, "")), unit: r.unit, amount: Number(r.amount.replace(/,/g, "")), currency: r.currency, amountKrw: r.amountKrw!, uploadId: batch.id,
       })),
     });
-    return b;
-  });
+  } catch (e) {
+    await prisma.uploadBatch.delete({ where: { id: batch.id } }).catch(() => {});
+    console.error(e);
+    return { ok: false, error: "저장 중 오류가 발생해 업로드를 취소했습니다. 다시 시도해 주세요." };
+  }
   await audit(me, "UPLOAD", "SalesRecord", batch.id, `실적 업로드: ${name} (저장 ${good.length}행, 오류 제외 ${summary.error}행)`);
   revalidatePath("/", "layout");
   return { ok: true, saved: good.length, skipped: summary.error };

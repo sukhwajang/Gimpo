@@ -6,3 +6,7 @@ prisma/dev.db-journal
 *.tsbuildinfo
 next-env.d.ts
 public/samples/sap_sales_sample.xlsx
+.open-next
+.wrangler
+.dev.vars
+cf-*.sql

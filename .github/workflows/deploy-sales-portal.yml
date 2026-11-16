@@ -1,0 +1,119 @@
+name: Deploy sales-portal (test) to Cloudflare Workers
+
+# sales-portal/ 을 Cloudflare Workers + D1 로 배포한다 (시연용 테스트 버전).
+# 저장소 Secret CLOUDFLARE_API_TOKEN 에 아래 권한이 필요하다.
+#   Account · Workers Scripts · Edit / Account · D1 · Edit / Account · Account Settings · Read
+# D1 데이터베이스가 없으면 만들고, 비어 있으면 시연용 시드 데이터를 넣는다.
+# 데이터를 처음 상태로 되돌리려면 Actions 에서 수동 실행(Run workflow) 시 reseed 를 켠다.
+
+on:
+  push:
+    branches: [main, claude/amazing-meitner-2tqys8]
+    paths: ['sales-portal/**', '.github/workflows/deploy-sales-portal.yml']
+  workflow_dispatch:
+    inputs:
+      reseed:
+        description: '시연 데이터를 지우고 다시 넣기'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-sales-portal
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: sales-portal
+
+env:
+  WRANGLER_SEND_METRICS: 'false'
+  DB_NAME: sales-portal-poc
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: sales-portal/package-lock.json
+      - run: npm ci
+
+      - name: Cloudflare 계정 확인
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN secret 이 없습니다."
+            exit 1
+          fi
+          # 계정 ID는 토큰으로 조회한다 (저장소에 남기지 않음)
+          ACCOUNT_ID=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" https://api.cloudflare.com/client/v4/accounts | jq -r '.result[0].id')
+          echo "::add-mask::$ACCOUNT_ID"
+          echo "CLOUDFLARE_ACCOUNT_ID=$ACCOUNT_ID" >> "$GITHUB_ENV"
+
+      - name: D1 데이터베이스 준비
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          find_id() { npx wrangler d1 list --json | jq -r --arg n "$DB_NAME" '.[] | select(.name==$n) | .uuid' | head -1; }
+          if ! npx wrangler d1 list --json > /dev/null 2> d1-error.log; then
+            cat d1-error.log
+            echo "::error::D1 에 접근할 수 없습니다. CLOUDFLARE_API_TOKEN 에 'Account · D1 · Edit' 과 'Account · Workers Scripts · Edit' 권한을 추가해 주세요."
+            exit 1
+          fi
+          DB_ID=$(find_id)
+          if [ -z "$DB_ID" ]; then
+            npx wrangler d1 create "$DB_NAME"
+            DB_ID=$(find_id)
+          fi
+          if [ -z "$DB_ID" ]; then echo "::error::D1 데이터베이스를 만들지 못했습니다."; exit 1; fi
+          sed -i "s/00000000-0000-0000-0000-000000000000/$DB_ID/" wrangler.jsonc
+
+      - name: 빌드 (OpenNext → Cloudflare Workers)
+        run: npx opennextjs-cloudflare build
+
+      - name: 시드 필요 여부 확인
+        id: seed
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          COUNT=$(npx wrangler d1 execute "$DB_NAME" --remote --json --command 'SELECT count(*) AS n FROM "User"' 2>/dev/null | jq -r '.[0].results[0].n' 2>/dev/null || true)
+          echo "현재 사용자 수: ${COUNT:-테이블 없음}"
+          if [ "${{ inputs.reseed }}" = "true" ] || ! [ "${COUNT:-0}" -gt 0 ] 2>/dev/null; then
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 시연 데이터 입력
+        if: steps.seed.outputs.needed == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          # 로컬 D1 에 스키마+시드를 만든 뒤 SQL 로 내보내 원격 D1 에 넣는다
+          npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script > cf-schema.sql
+          npx wrangler d1 execute "$DB_NAME" --local --file cf-schema.sql > /dev/null
+          SEED_D1=1 npx tsx prisma/seed.ts --force
+          npx wrangler d1 export "$DB_NAME" --local --output cf-export.sql
+          { echo 'PRAGMA defer_foreign_keys=TRUE;'
+            grep -oE '^CREATE TABLE IF NOT EXISTS "[A-Za-z]+"' cf-export.sql | sed -E 's/^CREATE TABLE IF NOT EXISTS ("[A-Za-z]+")/DROP TABLE IF EXISTS \1;/' | tac
+            cat cf-export.sql; } > cf-data.sql
+          npx wrangler d1 execute "$DB_NAME" --remote --yes --file cf-data.sql
+
+      - name: 배포
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          npx wrangler deploy 2>&1 | tee deploy.log
+          # 세션 서명 키: 배포할 때마다 바뀌지 않도록 토큰에서 유도한다
+          printf '%s' "$(printf 'nextauth:%s' "$CLOUDFLARE_API_TOKEN" | sha256sum | cut -d' ' -f1)" | npx wrangler secret put NEXTAUTH_SECRET
+          URL=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' deploy.log | head -1)
+          {
+            echo "### 영업포탈 테스트 버전"
+            echo "- 주소: ${URL:-(배포 로그 확인)}"
+            echo "- 로그인: 화면의 역할별 계정 선택 (예: admin@salesportal.example)"
+          } >> "$GITHUB_STEP_SUMMARY"

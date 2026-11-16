@@ -224,3 +224,29 @@ erDiagram
 | 업무 기능 | 견적·계약 문서 첨부(SharePoint 연계), 알림(Teams/메일), 결재 연계, 단가 이력, 목표 버전 관리(수정 이력) |
 | 운영 | 배포 환경(Azure App Service 등)·모니터링·로그 보관, 감사 로그 보존 기간, 테스트 자동화, 사용자 교육 |
 | 성능 | 목록 페이지네이션(현재 실적 300건·활동/감사 로그 1,000건까지 화면 표시), 집계 쿼리 최적화 |
+
+## 9. Cloudflare 테스트 배포 (Workers + D1)
+
+이 앱은 서버와 DB가 필요해 GitHub Pages 같은 정적 호스팅에는 올릴 수 없습니다. 테스트 버전은 Cloudflare Workers(서버)와 D1(SQLite 호환 DB)에 올립니다.
+
+- 워크플로: `.github/workflows/deploy-sales-portal.yml` — `sales-portal/` 이 바뀌어 푸시되면 자동 배포, Actions 에서 수동 실행도 가능
+- 필요한 것: 저장소 Secret `CLOUDFLARE_API_TOKEN` 에 **Workers Scripts · Edit**, **D1 · Edit**, **Account Settings · Read** 권한
+- 워크플로가 D1 데이터베이스(`sales-portal-poc`)를 만들고, 비어 있으면 시연 데이터를 넣은 뒤 `https://sales-portal-poc.<계정>.workers.dev` 로 배포합니다
+- 데이터를 처음 상태로 되돌리려면 수동 실행 시 `reseed` 를 켭니다
+
+로컬에서 Cloudflare 런타임으로 미리 보기:
+
+```bash
+npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script > cf-schema.sql
+npx wrangler d1 execute sales-portal-poc --local --file cf-schema.sql
+SEED_D1=1 npx tsx prisma/seed.ts --force
+printf 'NEXTAUTH_SECRET="local"\nNEXTAUTH_URL="http://localhost:8788"\n' > .dev.vars
+npm run cf:build && npm run cf:preview      # http://localhost:8788
+```
+
+주의할 점
+
+- **테스트 주소는 누구나 열 수 있고 비밀번호 없는 시연용 로그인이 켜져 있습니다.** 가상 데이터만 넣고, 실제 고객·실적 데이터는 올리지 마세요.
+- D1 은 트랜잭션을 지원하지 않아 여러 건을 묶는 저장(단계 변경+이력, 목표 일괄 저장 등)이 원자적으로 처리되지 않습니다. 정식 운영 DB는 PostgreSQL 을 권장합니다.
+- Workers 는 UTC 로 동작해 한국 시간 0~9시에는 "오늘"이 하루 전으로 계산됩니다.
+- 코드는 한 벌입니다. `src/lib/prisma.ts` 가 Cloudflare 에서는 D1 어댑터, 그 외에는 `DATABASE_URL` 을 씁니다.

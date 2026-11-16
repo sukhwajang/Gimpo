@@ -3,7 +3,15 @@ import { PrismaClient } from "@prisma/client";
 import * as XLSX from "xlsx";
 import { mkdirSync } from "node:fs";
 
-const prisma = new PrismaClient();
+let prisma: PrismaClient;
+// SEED_D1=1 이면 wrangler 의 로컬 D1(Cloudflare 배포용)에 시드한다. 기본은 .env 의 SQLite 파일.
+async function connect() {
+  if (process.env.SEED_D1 !== "1") return new PrismaClient();
+  const { getPlatformProxy } = await import("wrangler");
+  const { PrismaD1 } = await import("@prisma/adapter-d1");
+  const { env } = await getPlatformProxy<{ DB: ConstructorParameters<typeof PrismaD1>[0] }>();
+  return new PrismaClient({ adapter: new PrismaD1(env.DB) });
+}
 const force = process.argv.includes("--force");
 
 // ---------- 결정적 난수 ----------
@@ -418,6 +426,7 @@ function writeSampleXlsx() {
 }
 
 async function main() {
+  prisma = await connect();
   const existing = await prisma.user.count();
   if (existing > 0 && !force) {
     console.log(`[seed] 이미 데이터가 있어 건너뜁니다 (사용자 ${existing}명). 초기화: npm run db:reset`);
@@ -490,4 +499,7 @@ main()
     console.error(e);
     process.exit(1);
   })
-  .finally(() => prisma.$disconnect());
+  .finally(async () => {
+    await prisma?.$disconnect();
+    if (process.env.SEED_D1 === "1") process.exit(0); // 로컬 D1 프록시 종료
+  });
