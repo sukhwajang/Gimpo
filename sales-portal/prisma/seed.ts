@@ -226,7 +226,7 @@ const MS_NAMES = ["계약 체결", "기술이전 착수", "기술이전 완료",
     for (let i = 0; i < cnt; i++) {
       n++;
       const id = `o_${n}`;
-      const c = custs[(i * 7 + ri(0, 2)) % custs.length];
+      const c = custs[(i * 5 + ri(0, 3)) % custs.length];
       const p = pick(prods);
       const owner = ownerFor(c, biz);
       const outcome = weighted<[string, number][][number][0]>([["WON", 22], ["LOST", 18], ["OPEN", 60]]);
@@ -399,16 +399,16 @@ function writeSampleXlsx() {
   const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const label: Record<Biz, string> = { CHEM: "케미컬", API: "API", CDMO: "CDMO" };
   const toRow = (s: SR) => ({ 매출일자: fmt(s.saleDate), 사업구분: label[s.business], 고객코드: s.customerCode, 고객명: s.customerName, 제품코드: s.productCode, 제품명: s.productName, 수량: s.quantity, 단위: s.unit, 금액: s.amount, 통화: s.currency });
-  // 오늘 날짜 매출(시드에는 어제까지만 들어 있음) 60건
+  // 오늘 날짜 매출(시드에는 어제까지만 들어 있음) 45건
   const today = new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate(), 12);
-  for (let i = 0; i < 60; i++) rows.push(toRow(makeSale(i < 38 ? "CHEM" : i < 54 ? "API" : "CDMO", today)));
+  for (let i = 0; i < 45; i++) rows.push(toRow(makeSale(i < 34 ? "CHEM" : i < 44 ? "API" : "CDMO", today)));
   // 검증 시연용 오류 행
   rows.splice(7, 0, { ...rows[3] }); // 파일 내 중복
   rows.splice(20, 0, { ...rows[12], 고객코드: "K99999", 고객명: "미등록상사" }); // 미등록 고객코드
   rows.splice(31, 0, { ...rows[15], 금액: "" }); // 필수값 누락
-  rows.splice(44, 0, { ...rows[25], 매출일자: "" }); // 필수값 누락
-  rows.push({ ...rows[40], 고객코드: "F88888", 고객명: "Unknown Trading Co." }); // 미등록 고객코드
-  rows.push({ ...rows[50] }); // 파일 내 중복
+  rows.splice(40, 0, { ...rows[25], 매출일자: "" }); // 필수값 누락
+  rows.push({ ...rows[36], 고객코드: "F88888", 고객명: "Unknown Trading Co." }); // 미등록 고객코드
+  rows.push({ ...rows[28] }); // 파일 내 중복
   const ws = XLSX.utils.json_to_sheet(rows, { header: ["매출일자", "사업구분", "고객코드", "고객명", "제품코드", "제품명", "수량", "단위", "금액", "통화"] });
   ws["!cols"] = [12, 10, 10, 34, 10, 30, 10, 6, 16, 6].map((wch) => ({ wch }));
   const wb = XLSX.utils.book_new();

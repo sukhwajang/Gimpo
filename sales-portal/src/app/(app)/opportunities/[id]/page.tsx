@@ -12,7 +12,7 @@ import { BusinessBadge, StageBadge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/input";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
-import { BUSINESS_COLOR, LOST_REASON_LABEL } from "@/lib/constants";
+import { API_DOC_TYPES, BUSINESS_COLOR, LOST_REASON_LABEL } from "@/lib/constants";
 import { daysBetween, fmtDate, fmtDateTime, fmtKrw, fmtMoney } from "@/lib/format";
 import { loadRates } from "@/lib/fx";
 import { oppFormData } from "@/lib/opp-data";
@@ -53,6 +53,8 @@ export default async function OpportunityDetail({ params }: { params: { id: stri
   const today = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
   const overdue = opp.nextActionDue && opp.nextActionDue < today;
   const idle = daysBetween(opp.lastActivityAt, new Date());
+  const docOrder = (t: string) => (API_DOC_TYPES.indexOf(t) === -1 ? 99 : API_DOC_TYPES.indexOf(t));
+  opp.documents.sort((a, b) => docOrder(a.docType) - docOrder(b.docType));
   const docsProvided = opp.documents.filter((d) => d.provided).length;
   const docsRequested = opp.documents.filter((d) => d.requested).length;
   // 수정 폼의 선택지에 현재 값이 빠지지 않도록 보강

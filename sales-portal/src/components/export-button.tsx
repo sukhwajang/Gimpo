@@ -16,7 +16,16 @@ export function ExportButton({ rows, fileName, sheetName = "목록" }: { rows: R
         XLSX.utils.book_append_sheet(wb, ws, sheetName.slice(0, 31));
         const d = new Date();
         const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
-        XLSX.writeFile(wb, `${fileName}_${stamp}.xlsx`);
+        // 한글 파일명이 유지되도록 직접 Blob 으로 내려받는다
+        const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+        const url = URL.createObjectURL(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${fileName}_${stamp}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
       }}
     >
       <Download /> 엑셀 다운로드 <span className="text-muted-foreground">({rows.length})</span>

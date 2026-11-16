@@ -51,7 +51,7 @@ export function ClickChart({
               cursor="pointer" isAnimationActive={false}
               onClick={(d: { payload?: Datum }) => go(d?.payload, s.key)}
             >
-              {colorKey && data.map((row, i) => <Cell key={i} fill={(row[colorKey] as string) || s.color} />)}
+              {colorKey && s.key === series[0].key && data.map((row, i) => <Cell key={i} fill={(row[colorKey] as string) || s.color} />)}
             </Bar>
           )
         )}

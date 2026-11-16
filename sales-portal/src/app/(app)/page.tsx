@@ -218,7 +218,7 @@ async function ManagerDashboard({ me }: { me: SessionUser }) {
                 <ClickChart
                   xKey="name" colorKey="color" height={200}
                   data={perBiz.map((x) => ({ name: BUSINESS_LABEL[x.b], actual: Math.round(x.actual), target: Math.round(x.target), color: BUSINESS_COLOR[x.b], href: `/performance?business=${x.b}` }))}
-                  series={[{ key: "actual", name: "실적", color: "#334155" }, { key: "target", name: "목표", color: "#94a3b8", type: "line" }]}
+                  series={[{ key: "actual", name: "실적", color: "#334155" }, { key: "target", name: "목표", color: "#cbd5e1" }]}
                 />
                 <div className="mt-2 grid grid-cols-3 gap-2">
                   {perBiz.map((x) => {

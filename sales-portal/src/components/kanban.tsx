@@ -61,7 +61,7 @@ export function Kanban({ stages, cards: initial, color, move }: { stages: StageL
                     className={cn("rounded-md border bg-white p-2.5 shadow-sm", c.editable ? "cursor-grab active:cursor-grabbing" : "opacity-80", dragId === c.id && "opacity-40")}
                     data-card={c.title}
                   >
-                    <Link href={`/opportunities/${c.id}`} className="line-clamp-2 text-sm font-medium leading-snug hover:text-primary hover:underline" draggable={false}>{c.title}</Link>
+                    <Link href={`/opportunities/${c.id}`} className="line-clamp-2 text-sm font-medium leading-snug hover:text-primary hover:underline">{c.title}</Link>
                     <div className="mt-0.5 truncate text-xs text-muted-foreground">{c.customerName}</div>
                     <div className="mt-1.5 flex items-center justify-between text-xs">
                       <span className="tabular font-semibold">{fmtMoney(c.amount, c.currency)}</span>
