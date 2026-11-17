@@ -1,0 +1,15 @@
+{
+  "name": "chungju-plant-3d",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "코오롱생명과학 충주공장 3D 지도 (드론 비행·보행 탐색)",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "data": "python3 scripts/build_data.py"
+  },
+  "dependencies": { "three": "^0.170.0" },
+  "devDependencies": { "@types/three": "^0.170.0", "typescript": "^5.7.3", "vite": "^6.4.5" }
+}

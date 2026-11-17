@@ -1,0 +1,11 @@
+{
+  "name": "코오롱생명과학 충주공장",
+  "address": "충청북도 충주시 대소원면 기업도시1로 54",
+  "origin": { "lat": 36.9968, "lon": 127.8236 },
+  "halfExtentM": 1200,
+  "siteBoundsNote": "공장 부지 범위는 주소(기업도시1로 54)와 건물 배치로 추정한 값입니다. 실제 부지 경계에 맞게 고치세요.",
+  "siteBounds": { "west": 127.8212, "east": 127.8258, "south": 36.9957, "north": 36.9979 },
+  "overtureRelease": "2026-10-21.0",
+  "terrainZoom": 13,
+  "terrainCellM": 15
+}

@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="description" content="코오롱생명과학 충주공장 3D 지도 — 드론으로 날거나 걸어서 시설을 둘러봅니다." />
+  <meta name="theme-color" content="#10161f" />
+  <title>코오롱생명과학 충주공장 3D 지도</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2310161f'/%3E%3Cpath d='M5 24V13l7 4v-4l7 4V8h8v16z' fill='%23ffb000'/%3E%3C/svg%3E" />
+  <style>
+    :root {
+      --panel: rgba(16, 22, 31, 0.86); --line: rgba(255, 255, 255, 0.12); --text: #eef2f6; --dim: #9aa7b5;
+      --accent: #ffb000; --accent-ink: #1a1300; --radius: 12px;
+      font-family: "Pretendard Variable", Pretendard, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #10161f; color: var(--text); font-size: 14px; }
+    #view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; outline: none; }
+    .panel { position: fixed; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+    button, input, select { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+
+    #title { top: 12px; left: 12px; padding: 10px 14px; max-width: min(320px, calc(100vw - 24px)); }
+    #title h1 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+    #title p { margin: 3px 0 0; color: var(--dim); font-size: 12px; }
+    .badge { display: inline-block; margin-top: 6px; padding: 2px 7px; border-radius: 99px; background: rgba(255, 176, 0, 0.16); color: var(--accent); font-size: 11px; font-weight: 600; }
+
+    #modes { top: 12px; left: 50%; transform: translateX(-50%); display: flex; padding: 4px; gap: 4px; }
+    #modes button { border: 0; background: transparent; padding: 8px 16px; border-radius: 9px; font-weight: 600; white-space: nowrap; }
+    #modes button small { display: block; font-weight: 400; font-size: 10px; color: var(--dim); }
+    #modes button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+    #modes button[aria-pressed="true"] small { color: rgba(26, 19, 0, 0.7); }
+
+    #side { top: 12px; right: 12px; bottom: 12px; width: 290px; display: flex; flex-direction: column; overflow: hidden; }
+    #side header { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+    #side header b { font-size: 13px; }
+    #side .scroll { overflow-y: auto; flex: 1; padding: 6px; }
+    #side.closed { bottom: auto; }
+    #side.closed .scroll, #side.closed #settings { display: none; }
+    .icon-btn { border: 1px solid var(--line); background: transparent; border-radius: 8px; padding: 4px 9px; font-size: 12px; }
+    .fac { display: flex; width: 100%; text-align: left; gap: 8px; align-items: center; border: 0; background: transparent; padding: 8px; border-radius: 8px; }
+    .fac:hover, .fac.sel { background: rgba(255, 255, 255, 0.08); }
+    .fac .n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+    .fac .m { color: var(--dim); font-size: 11px; white-space: nowrap; }
+    .fac .dot { width: 8px; height: 8px; border-radius: 2px; background: var(--accent); flex: none; }
+    .group { margin: 8px 8px 2px; color: var(--dim); font-size: 11px; font-weight: 600; }
+    #settings { border-top: 1px solid var(--line); padding: 10px 12px; display: grid; gap: 8px; font-size: 12px; }
+    #settings label { display: flex; align-items: center; gap: 6px; }
+    #settings input[type="text"] { width: 100%; background: rgba(255, 255, 255, 0.07); border: 1px solid var(--line); border-radius: 7px; padding: 6px 8px; }
+    #settings .row { display: flex; gap: 6px; }
+    #settings .row button { flex: 1; }
+    .hint { color: var(--dim); font-size: 11px; line-height: 1.45; }
+
+    #info { left: 12px; top: 112px; width: 280px; padding: 12px; display: none; }
+    #info.on { display: block; }
+    #info h2 { margin: 0 0 8px; font-size: 14px; display: flex; justify-content: space-between; gap: 8px; }
+    #info .f { display: grid; grid-template-columns: 62px 1fr; gap: 6px 8px; align-items: center; font-size: 12px; }
+    #info .f span { color: var(--dim); }
+    #info input, #info select { width: 100%; background: rgba(255, 255, 255, 0.07); border: 1px solid var(--line); border-radius: 7px; padding: 5px 7px; }
+    #info select option { color: #111; }
+    #info .meta { margin-top: 8px; }
+    #info .go { margin-top: 10px; width: 100%; border: 0; border-radius: 8px; padding: 8px; background: var(--accent); color: var(--accent-ink); font-weight: 700; }
+
+    #mini { left: 12px; bottom: 12px; width: 190px; height: 190px; overflow: hidden; padding: 0; }
+    #mini canvas { width: 100%; height: 100%; display: block; cursor: crosshair; }
+    #hud { left: 214px; bottom: 12px; padding: 7px 12px; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--dim); max-width: calc(100vw - 540px); }
+    #hud b { color: var(--text); font-weight: 600; }
+    #help { left: 50%; bottom: 58px; transform: translateX(-50%); padding: 8px 14px; font-size: 12px; color: var(--dim); text-align: center; pointer-events: none; transition: opacity 0.6s; max-width: calc(100vw - 24px); }
+    #help kbd { background: rgba(255, 255, 255, 0.12); border-radius: 4px; padding: 1px 5px; color: var(--text); font: inherit; font-size: 11px; }
+    #cross { position: fixed; left: 50%; top: 50%; width: 14px; height: 14px; margin: -7px; border: 2px solid rgba(255, 255, 255, 0.8); border-radius: 50%; pointer-events: none; display: none; }
+    #toast { left: 50%; top: 76px; transform: translateX(-50%); padding: 8px 14px; font-size: 12px; display: none; z-index: 5; }
+    #labels { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+    .lbl { position: absolute; left: 0; top: 0; padding: 2px 7px; border-radius: 6px; background: rgba(16, 22, 31, 0.78); font-size: 11px; font-weight: 600; white-space: nowrap; will-change: transform; }
+    .lbl.site { background: var(--accent); color: var(--accent-ink); }
+    .lbl.road { background: transparent; color: #fff; text-shadow: 0 1px 3px #000; font-weight: 500; }
+    #loading { position: fixed; inset: 0; display: grid; place-items: center; background: #10161f; z-index: 10; font-size: 14px; color: var(--dim); }
+
+    /* 터치 조이스틱 */
+    #stick, #updown { position: fixed; bottom: 24px; display: none; touch-action: none; }
+    #stick { left: 24px; width: 120px; height: 120px; border-radius: 50%; background: rgba(16, 22, 31, 0.5); border: 1px solid var(--line); }
+    #stick i { position: absolute; left: 50%; top: 50%; width: 50px; height: 50px; margin: -25px; border-radius: 50%; background: rgba(255, 255, 255, 0.55); }
+    #updown { right: 24px; flex-direction: column; gap: 10px; }
+    #updown button { width: 56px; height: 56px; border-radius: 50%; border: 1px solid var(--line); background: rgba(16, 22, 31, 0.6); font-size: 20px; }
+    body.touch.moving #stick { display: block; }
+    body.touch.drone #updown { display: flex; }
+    body.touch.moving #mini { bottom: auto; top: 112px; width: 120px; height: 120px; }
+    body.touch #help { display: none; }
+
+    @media (max-width: 820px) {
+      #title { display: none; }
+      #modes { top: 8px; }
+      #modes button { padding: 7px 12px; }
+      #side { top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: 46vh; }
+      #side.closed { left: auto; }
+      #hud { left: 8px; right: 8px; bottom: auto; top: 62px; max-width: none; text-align: center; }
+      #mini { bottom: auto; top: 112px; left: 8px; width: 120px; height: 120px; }
+      #info { top: auto; bottom: 8px; left: 8px; right: 8px; width: auto; z-index: 4; }
+      body.moving #side { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="view" tabindex="0"></canvas>
+  <div id="labels"></div>
+  <div id="cross"></div>
+
+  <div id="title" class="panel">
+    <h1 id="t-name">3D 지도</h1>
+    <p id="t-addr"></p>
+    <span class="badge" id="t-badge" hidden>부지 위치·건물 높이는 추정값</span>
+  </div>
+
+  <div id="modes" class="panel" role="group" aria-label="보기 방식">
+    <button data-mode="orbit" aria-pressed="true">조감<small>1</small></button>
+    <button data-mode="drone" aria-pressed="false">드론<small>2</small></button>
+    <button data-mode="walk" aria-pressed="false">보행<small>3</small></button>
+  </div>
+
+  <div id="toast" class="panel"></div>
+
+  <div id="info" class="panel">
+    <h2><span id="i-title"></span><button class="icon-btn" id="i-close" aria-label="닫기">✕</button></h2>
+    <div class="f">
+      <span>이름</span><input id="i-name" type="text" placeholder="예: 제1제조동" />
+      <span>용도</span><select id="i-use"></select>
+      <span>높이(m)</span><input id="i-h" type="number" min="2" max="200" step="0.5" />
+      <span>메모</span><input id="i-memo" type="text" />
+      <span>공장 시설</span><label><input id="i-site" type="checkbox" /> 부지 내 시설로 표시</label>
+    </div>
+    <p class="hint meta" id="i-meta"></p>
+    <button class="go" id="i-go">이 시설로 이동</button>
+  </div>
+
+  <aside id="side" class="panel">
+    <header><b>시설 목록 <span id="fac-count" class="hint"></span></b><button class="icon-btn" id="side-toggle">접기</button></header>
+    <div class="scroll" id="fac-list"></div>
+    <div id="settings">
+      <label><input type="checkbox" id="opt-labels" checked /> 이름표 보기</label>
+      <div>
+        <input type="text" id="opt-key" placeholder="브이월드 API 키 (항공사진용)" autocomplete="off" spellcheck="false" />
+      </div>
+      <label><input type="checkbox" id="opt-aerial" /> 지면에 항공사진 입히기</label>
+      <div class="row">
+        <button class="icon-btn" id="btn-export">시설 정보 내보내기</button>
+        <button class="icon-btn" id="btn-import">가져오기</button>
+        <input type="file" id="file-import" accept="application/json" hidden />
+      </div>
+      <p class="hint" id="attrib"></p>
+    </div>
+  </aside>
+
+  <div id="mini" class="panel"><canvas width="380" height="380" aria-label="미니맵"></canvas></div>
+  <div id="hud" class="panel"></div>
+  <div id="help" class="panel"></div>
+
+  <div id="stick"><i></i></div>
+  <div id="updown"><button id="btn-up" aria-label="상승">▲</button><button id="btn-down" aria-label="하강">▼</button></div>
+
+  <div id="loading">지도 데이터를 불러오는 중…</div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
