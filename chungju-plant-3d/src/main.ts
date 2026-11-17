@@ -279,7 +279,9 @@ async function start() {
   // ---------- 설정: 항공사진, 내보내기 ----------
   const keyInput = $<HTMLInputElement>('opt-key');
   const aerial = $<HTMLInputElement>('opt-aerial');
-  try { keyInput.value = localStorage.getItem(KEY_LS) ?? ''; } catch { /* 저장소 사용 불가 */ }
+  // .env.local 의 VITE_VWORLD_KEY 가 있으면 기본값으로 쓴다 (키는 저장소에 커밋하지 않음)
+  const envKey = (import.meta.env.VITE_VWORLD_KEY as string | undefined) ?? '';
+  try { keyInput.value = localStorage.getItem(KEY_LS) || envKey; } catch { keyInput.value = envKey; }
   keyInput.addEventListener('change', () => { try { localStorage.setItem(KEY_LS, keyInput.value.trim()); } catch { /* 무시 */ } });
   aerial.addEventListener('change', async () => {
     if (!aerial.checked) {
