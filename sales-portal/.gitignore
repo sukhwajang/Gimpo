@@ -10,3 +10,4 @@ public/samples/sap_sales_sample.xlsx
 .wrangler
 .dev.vars
 cf-*.sql
+preview-out

@@ -225,11 +225,22 @@ erDiagram
 | 운영 | 배포 환경(Azure App Service 등)·모니터링·로그 보관, 감사 로그 보존 기간, 테스트 자동화, 사용자 교육 |
 | 성능 | 목록 페이지네이션(현재 실적 300건·활동/감사 로그 1,000건까지 화면 표시), 집계 쿼리 최적화 |
 
-## 9. Cloudflare 테스트 배포 (Workers + D1)
+## 9. 정적 미리보기 (Cloudflare Pages)
+
+서버·DB 없이 화면만 둘러볼 수 있는 조회 전용 버전입니다. 실제 앱을 띄운 뒤 관리자·사업부장(API)·영업담당(케미컬) 세 역할로 로그인해 모든 화면을 HTML 로 저장합니다(`scripts/static-preview.cjs`).
+
+- 주소: `https://sales-portal-preview.pages.dev` (워크플로 `.github/workflows/deploy-sales-portal-preview.yml` 이 푸시할 때마다 다시 만들어 올립니다)
+- 로컬에서 만들기: `npm run preview:static` → `preview-out/` (Playwright 필요)
+- 되는 것: 역할 전환, 메뉴 이동, 목록 → 상세 이동, 칸반/목록·사업 탭, 대시보드의 카드·표 링크
+- 안 되는 것: 등록·수정·삭제, 칸반 드래그, 필터 조회, 엑셀 업로드/다운로드, 차트 막대 클릭. 버튼을 누르면 "조회 전용" 안내만 뜹니다.
+
+전체 기능은 로컬 실행(`npm run dev`)이나 아래 10번의 Workers 배포로 확인합니다.
+
+## 10. Cloudflare 테스트 배포 (Workers + D1)
 
 이 앱은 서버와 DB가 필요해 GitHub Pages 같은 정적 호스팅에는 올릴 수 없습니다. 테스트 버전은 Cloudflare Workers(서버)와 D1(SQLite 호환 DB)에 올립니다.
 
-- 워크플로: `.github/workflows/deploy-sales-portal.yml` — `sales-portal/` 이 바뀌어 푸시되면 자동 배포, Actions 에서 수동 실행도 가능
+- 워크플로: `.github/workflows/deploy-sales-portal.yml` — Actions 에서 수동 실행 (토큰 권한이 준비된 뒤)
 - 필요한 것: 저장소 Secret `CLOUDFLARE_API_TOKEN` 에 **Workers Scripts · Edit**, **D1 · Edit**, **Account Settings · Read** 권한
 - 워크플로가 D1 데이터베이스(`sales-portal-poc`)를 만들고, 비어 있으면 시연 데이터를 넣은 뒤 `https://sales-portal-poc.<계정>.workers.dev` 로 배포합니다
 - 데이터를 처음 상태로 되돌리려면 수동 실행 시 `reseed` 를 켭니다

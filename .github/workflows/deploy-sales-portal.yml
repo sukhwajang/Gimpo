@@ -6,10 +6,8 @@ name: Deploy sales-portal (test) to Cloudflare Workers
 # D1 데이터베이스가 없으면 만들고, 비어 있으면 시연용 시드 데이터를 넣는다.
 # 데이터를 처음 상태로 되돌리려면 Actions 에서 수동 실행(Run workflow) 시 reseed 를 켠다.
 
+# 토큰 권한이 준비되기 전에는 실패하므로 수동 실행만 한다. (정적 미리보기는 deploy-sales-portal-preview.yml)
 on:
-  push:
-    branches: [main, claude/amazing-meitner-2tqys8]
-    paths: ['sales-portal/**', '.github/workflows/deploy-sales-portal.yml']
   workflow_dispatch:
     inputs:
       reseed:
