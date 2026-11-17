@@ -33,7 +33,7 @@ npm run build    # dist/ 에 정적 사이트 생성
 | 건물 높이 | 없음 | **면적으로 어림한 값**입니다. 앱에서 건물마다 고칠 수 있습니다. |
 | 시설 이름 | 없음 | `시설 01`… 은 면적순 임시 이름입니다. |
 | 도로·녹지 | OpenStreetMap | 공장 내부 도로는 거의 없습니다. |
-| 지형 | SRTM 30m (AWS Terrain Tiles) | 큰 건물 자리는 평평하게 골랐습니다. 세밀한 단차는 없습니다. |
+| 지형 | Copernicus DEM 30m (2011~2015 측량) | 30m 해상도라 공단의 계단식 평탄면·옹벽이 드러나지 않습니다. 개발지는 둔덕을 깎아 평탄화하고, 붙은 건물은 한 터로 묶어 같은 높이로 골랐습니다. 정확한 지형은 국토지리정보원 5m DEM이 필요합니다. |
 
 ## 데이터 다시 만들기
 
@@ -75,4 +75,10 @@ src/controls.ts         조감·드론·보행 조작
 src/main.ts             UI (시설 목록, 편집, 미니맵)
 ```
 
-데이터 저작권: 건물 © Overture Maps Foundation · © OpenStreetMap contributors (ODbL), 지형 SRTM/AWS Terrain Tiles.
+## 구글 실사 3D(Photorealistic 3D Tiles)를 쓰지 않은 이유
+
+- 한국은 지도 데이터 국외 반출 제한 때문에 구글 3D 실사 지도가 제공되지 않는 지역으로 알고 있습니다. 쓰려면 Google Cloud Map Tiles API 키(결제 등록 필요)로 이 좌표를 직접 시험해 봐야 합니다.
+- 제공되더라도 약관상 내려받아 저장하거나 고칠 수 없고, 스트리밍으로만 보여 줘야 합니다.
+- 국내에서 쓸 수 있는 실사 자료는 **브이월드 항공사진·3D 건물**(키 필요), 그리고 **직접 드론 촬영한 사진측량 모델**입니다.
+
+데이터 저작권: 건물 © Overture Maps Foundation · © OpenStreetMap contributors (ODbL), 지형 Copernicus DEM GLO-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018, provided under COPERNICUS by the European Union and ESA.
