@@ -38,13 +38,14 @@ jobs:
           cache-dependency-path: sales-portal/package-lock.json
       - run: npm ci
       - name: 브라우저 준비 (화면 저장용)
+        # 러너에 설치된 Chrome 을 그대로 쓴다 (브라우저 내려받기 없음)
         run: |
-          npm install --no-save playwright@1.56.1
-          npx playwright install --with-deps chromium
+          npm install --no-save playwright
+          google-chrome --version
       - name: 앱 빌드 (시드 데이터 포함)
         run: npm run build
       - name: 정적 미리보기 생성
-        run: node scripts/static-preview.cjs
+        run: PREVIEW_BROWSER_CHANNEL=chrome node scripts/static-preview.cjs
       - name: Cloudflare Pages 배포
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

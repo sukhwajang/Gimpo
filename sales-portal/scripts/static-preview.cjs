@@ -162,7 +162,7 @@ ${ROLES.map((r) => `<a href="/${r.key}/index.html" class="block rounded-lg borde
   let code = 0;
   try {
     await waitServer();
-    const browser = await chromium.launch();
+    const browser = await chromium.launch(process.env.PREVIEW_BROWSER_CHANNEL ? { channel: process.env.PREVIEW_BROWSER_CHANNEL } : {});
     const counts = {};
     let cssTags = "";
     for (const role of ROLES) {
