@@ -356,12 +356,16 @@ def build_buildings(force):
                         floors = int(hit["floors"]) if hit["floors"] else None
                     except (TypeError, ValueError):
                         pass
-        apt = apt_hint or bool(name and re.fullmatch(r"\d+동", name))
+        # "1동·2동" 이름만으로 아파트라 보면 공장 동 번호까지 아파트 층고(2.9m)가 된다 → 공장 부지 안에서는 쓰지 않는다
+        apt = apt_hint or bool(name and re.fullmatch(r"\d+동", name) and not site)
         est = False
         if height:
             h = float(height)
         elif floors:
             h = floors * (2.9 if apt else 4.5)
+            if not apt and floors <= 2 and area > 400:
+                # 넓은 1~2층 공장·창고는 층고가 높다(8~12m): 면적 어림값보다 낮게 잡지 않는다
+                h = max(h, est_height(seed, area, False))
         else:
             est, h = True, est_height(seed, area, apt)
         out.append({"id": bid, "name": name, "kind": "apartment" if apt else "industrial" if (site or area > 400) else "small",
