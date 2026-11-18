@@ -1,21 +1,30 @@
 #!/usr/bin/env python3
-"""오픈 데이터로 공장 주변 3D 장면 데이터(public/data/scene.json)를 만든다.
+"""오픈 데이터로 사업장 주변 3D 장면 데이터(public/data/<사업장>/scene.json)를 만든다.
 
   건물 윤곽  Overture Maps (OSM + 위성영상 기반 ML 윤곽, 키 불필요)
   도로·녹지  OpenStreetMap 공식 API
   지형      AWS Terrain Tiles (Terrarium, SRTM 기반)
 
-사용:  pip install -r scripts/requirements.txt && python3 scripts/build_data.py
-옵션:  --skip-overture  (이미 받은 캐시 .cache/ 를 재사용)
+사용:  pip install -r scripts/requirements.txt && python3 scripts/build_data.py --site chungju
+옵션:  --site <id>  sites/<id>.json 사업장 (기본 chungju) · --all  모든 사업장
+       --refresh   원본(.cache/<id>/)도 새로 받기
 """
-import io, json, math, os, sys, urllib.request, hashlib
+import io, json, math, os, ssl, sys, urllib.request, hashlib
 from pathlib import Path
 from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parent.parent
-CFG = json.loads((ROOT / "site.config.json").read_text(encoding="utf-8"))
-CACHE = ROOT / ".cache"
-CACHE.mkdir(exist_ok=True)
+
+
+def _arg(name, default=None):
+    return sys.argv[sys.argv.index(name) + 1] if name in sys.argv and sys.argv.index(name) + 1 < len(sys.argv) else default
+
+
+SITE = _arg("--site", "chungju")
+CFG = json.loads((ROOT / "sites" / f"{SITE}.json").read_text(encoding="utf-8"))
+CACHE = ROOT / ".cache" / SITE
+CACHE.mkdir(parents=True, exist_ok=True)
+OUT_DIR = ROOT / "public" / "data" / SITE
 UA = {"User-Agent": "plant-3d-map-builder/1.0"}
 
 LAT0, LON0 = CFG["origin"]["lat"], CFG["origin"]["lon"]
@@ -31,8 +40,29 @@ def to_local(lon, lat):
     return [round((lon - LON0) * M_LON, 2), round((lat - LAT0) * M_LAT, 2)]
 
 
+# 사내망 SSL 검사 장비의 인증서는 Python 3.13의 엄격 검사(VERIFY_X509_STRICT)에 걸린다.
+# 인증서 검증 자체는 유지하고 엄격 플래그만 끈다.
+SSL_CTX = ssl.create_default_context()
+SSL_CTX.verify_flags &= ~getattr(ssl, "VERIFY_X509_STRICT", 0)
+
+
+# 공장 부지: 지적도 필지 윤곽(siteParcel)이 있으면 그것을, 없으면 siteBounds 사각형을 쓴다
+_sb = CFG["siteBounds"]
+SITE_RING = (CFG.get("siteParcel") or {}).get("ring") or [
+    [_sb["west"], _sb["south"]], [_sb["east"], _sb["south"]], [_sb["east"], _sb["north"]], [_sb["west"], _sb["north"]]]
+
+
+def in_site(lon, lat):
+    inside, n = False, len(SITE_RING)
+    for i in range(n):
+        (x1, y1), (x2, y2) = SITE_RING[i], SITE_RING[(i + 1) % n]
+        if (y1 > lat) != (y2 > lat) and lon < x1 + (lat - y1) * (x2 - x1) / (y2 - y1):
+            inside = not inside
+    return inside
+
+
 def http_get(url):
-    with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=90) as r:
+    with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=90, context=SSL_CTX) as r:
         return r.read()
 
 
@@ -266,55 +296,162 @@ def ring_area(r):
     return abs(sum(r[i][0] * r[i + 1][1] - r[i + 1][0] * r[i][1] for i in range(len(r) - 1))) / 2
 
 
+# 건축물대장 주용도 코드 -> 이름 (건축법 시행령 별표1 분류)
+USE_NAMES = {"01000": "단독주택", "02000": "공동주택", "03000": "제1종근린생활시설", "04000": "제2종근린생활시설",
+             "05000": "문화및집회시설", "06000": "종교시설", "07000": "판매시설", "08000": "운수시설", "09000": "의료시설",
+             "10000": "교육연구시설", "11000": "노유자시설", "12000": "수련시설", "13000": "운동시설", "14000": "업무시설",
+             "15000": "숙박시설", "16000": "위락시설", "17000": "공장", "18000": "창고시설", "19000": "위험물저장및처리시설",
+             "20000": "자동차관련시설", "21000": "동물및식물관련시설", "22000": "자원순환관련시설", "23000": "교정및군사시설",
+             "24000": "방송통신시설", "25000": "발전시설", "26000": "묘지관련시설", "27000": "관광휴게시설", "28000": "장례시설",
+             "29000": "야영장시설", "30000": "기타"}
+ML_KEEP_M2 = 200  # 대장에 없는 자동 추출 윤곽은 이보다 큰 것만 '미등록 추정'으로 남긴다 (작은 것은 대부분 차량·컨테이너)
+
+
+def est_height(seed, area, apt):
+    """높이 자료가 없어 면적으로 어림: 대형 공장 12m, 중형 9m, 소형 5m, 아파트 45m"""
+    j = int(hashlib.md5(seed.encode()).hexdigest()[:4], 16) / 65535  # 건물마다 고정된 0~1
+    return 45 + j * 15 if apt else (11 + j * 4 if area > 2000 else 7 + j * 4 if area > 400 else 4 + j * 2)
+
+
+def best_overlap(geom, cands, index=None):
+    """겹치는 면적 비율(작은 쪽 기준)이 가장 큰 후보와 그 비율"""
+    best, best_r = None, 0.0
+    for g_, v in (cands if index is None else [cands[i] for i in index.query(geom)]):
+        if not g_.intersects(geom):
+            continue
+        r_ = g_.intersection(geom).area / max(min(geom.area, g_.area), 1e-12)
+        if r_ > best_r:
+            best, best_r = v, r_
+    return best, best_r
+
+
+def polys_of(g):
+    return [g["coordinates"]] if g["type"] == "Polygon" else g["coordinates"] if g["type"] == "MultiPolygon" else []
+
+
 def build_buildings(force):
     import re
+    from shapely.geometry import shape, Polygon
+    from shapely.strtree import STRtree
     raw = json.loads(cached("overture_buildings.json", fetch_overture, force))
-    # 브이월드 건물 자료(scripts/import_vworld.py)가 있으면 이름·층수를 같은 자리 건물에 옮긴다
-    vw = []
-    vp = CACHE / "vworld_buildings.json"
-    if vp.exists():
-        from shapely.geometry import shape
-        vw = [(shape(v["geometry"]), v) for v in json.loads(vp.read_text(encoding="utf-8"))]
-    sb = CFG["siteBounds"]
+    load = lambda n: json.loads((CACHE / n).read_text(encoding="utf-8")) if (CACHE / n).exists() else []
+    spbd = [(shape(v["geometry"]).buffer(0), v) for v in load("vworld_buildings.json")]
+    bldg = load("vworld_bldginfo.json")
     out = []
-    for b in raw:
-        g = b["geometry"]
-        polys = [g["coordinates"]] if g["type"] == "Polygon" else g["coordinates"] if g["type"] == "MultiPolygon" else []
-        for k, poly in enumerate(polys):
-            ring = [to_local(x, y) for x, y in poly[0]]
-            area = ring_area(ring)
-            cx = sum(p[0] for p in ring[:-1]) / (len(ring) - 1)
-            cy = sum(p[1] for p in ring[:-1]) / (len(ring) - 1)
-            if area < 20 or abs(cx) > HALF or abs(cy) > HALF:
-                continue
-            lon_c, lat_c = LON0 + cx / M_LON, LAT0 + cy / M_LAT
-            site = sb["west"] <= lon_c <= sb["east"] and sb["south"] <= lat_c <= sb["north"]
-            name, cls = b["name"], b["class"]
-            if vw:
-                from shapely.geometry import Point
-                pt = Point(lon_c, lat_c)
-                hit = next((v for g_, v in vw if g_.contains(pt)), None)
-                if hit:
-                    name = name or hit["name"]
+
+    def emit(bid, seed, poly, name, floors, height, apt_hint, src, extra):
+        ring = [to_local(x, y) for x, y in poly[0]]
+        area = ring_area(ring)
+        cx = sum(p[0] for p in ring[:-1]) / (len(ring) - 1)
+        cy = sum(p[1] for p in ring[:-1]) / (len(ring) - 1)
+        if area < 20 or abs(cx) > HALF or abs(cy) > HALF:
+            return
+        site = in_site(LON0 + cx / M_LON, LAT0 + cy / M_LAT)
+        if spbd and not name:
+            hit, r_ = best_overlap(Polygon(poly[0]).buffer(0), spbd)
+            if hit and r_ >= 0.3:
+                name = hit["name"]
+                if not floors:
                     try:
-                        b["floors"] = b["floors"] or (int(hit["floors"]) if hit["floors"] else None)
+                        floors = int(hit["floors"]) if hit["floors"] else None
                     except (TypeError, ValueError):
                         pass
-            apt = cls == "apartments" or bool(name and re.fullmatch(r"\d+동", name))
-            est = False
-            if b["height"]:
-                h = float(b["height"])
-            elif b["floors"]:
-                h = b["floors"] * (2.9 if apt else 4.5)
-            else:
-                est = True
-                # 높이 자료가 없어 면적으로 어림: 대형 공장 12m, 중형 9m, 소형 5m, 아파트 45m
-                j = int(hashlib.md5(b["id"].encode()).hexdigest()[:4], 16) / 65535  # 건물마다 고정된 0~1
-                h = 45 + j * 15 if apt else (11 + j * 4 if area > 2000 else 7 + j * 4 if area > 400 else 4 + j * 2)
-            out.append({"id": f"{b['id'][:12]}-{k}", "name": name, "kind": "apartment" if apt else "industrial" if (site or area > 400) else "small",
-                        "site": site, "h": round(h, 1), "hEst": est, "area": round(area),
-                        "src": "osm" if b["src"] == "OpenStreetMap" else "ml",
-                        "ring": ring[:-1], "holes": [[to_local(x, y) for x, y in hr][:-1] for hr in poly[1:]]})
+        apt = apt_hint or bool(name and re.fullmatch(r"\d+동", name))
+        est = False
+        if height:
+            h = float(height)
+        elif floors:
+            h = floors * (2.9 if apt else 4.5)
+        else:
+            est, h = True, est_height(seed, area, apt)
+        out.append({"id": bid, "name": name, "kind": "apartment" if apt else "industrial" if (site or area > 400) else "small",
+                    "site": site, "h": round(h, 1), "hEst": est, "area": round(area), "src": src,
+                    "ring": ring[:-1], "holes": [[to_local(x, y) for x, y in hr][:-1] for hr in poly[1:]], **extra})
+
+    if bldg:
+        # 대장 GIS 윤곽은 항공사진과 10~20m 어긋나거나 돌아간 경우가 많고, 같은 건물의 윤곽이 중복으로 들어 있다.
+        # 그래서 모양은 영상에서 뽑은 Overture 윤곽을 쓰고, 이름·높이·층수·용도는 겹치는 대장 건물에서 가져온다.
+        from shapely.ops import unary_union
+        meta = []
+        for v in bldg:
+            g = shape(v["geometry"]).buffer(0)
+            if g.is_empty:
+                continue
+            meta.append((g, v))
+        # 용도 코드가 있는(대장과 연결된) 윤곽을 우선, 그것과 겹치는 용도 없는 윤곽은 중복으로 본다
+        meta.sort(key=lambda gv: (gv[1]["use"] is None, -gv[0].area))
+        uniq = []
+        for g, v in meta:
+            if any(u.intersects(g) and u.intersection(g).area > 0.3 * min(u.area, g.area) for u, _ in uniq):
+                continue
+            uniq.append((g, v))
+        tree = STRtree([g for g, _ in uniq])
+        union_buf = unary_union([g for g, _ in uniq]).buffer(5 / M_LAT)  # 5m 여유
+        reach = 8 / M_LAT  # 속성을 옮길 대장 건물을 찾는 거리
+        kept = dropped = 0
+
+        def attrs(v):
+            name = " ".join(x for x in (v["name"], v["dong"]) if x) or None
+            floors = int(v["floors"]) if v["floors"] and v["floors"] > 0 else None
+            height = v["height"] if v["height"] and v["height"] > 1 else None
+            extra = {k_: x for k_, x in (("use", USE_NAMES.get(v["use"] or "", None)), ("floors", floors),
+                                         ("approved", v["approved"])) if x}
+            return name, floors, height, extra
+
+        def compact(g):
+            return 4 * math.pi * g.area / max(g.length ** 2, 1e-18)  # 원 1, 정사각형 0.79, 들쭉날쭉할수록 작다
+
+        kept_geoms = []
+        for b in raw:
+            for k, poly in enumerate(polys_of(b["geometry"])):
+                op = Polygon(poly[0]).buffer(0)
+                area_m2 = op.area * M_LON * M_LAT
+                cover = op.intersection(union_buf).area / max(op.area, 1e-12)
+                # 이 윤곽 면적 중 가장 많이 덮는 대장 건물 (작은 쪽 기준으로 재면 큰 오검출 안의 작은 건물 하나로도 '등록'이 된다)
+                best, best_r = None, 0.0
+                for i in tree.query(op):
+                    g_ = uniq[i][0]
+                    r_ = g_.intersection(op).area / max(op.area, 1e-12)
+                    if r_ > best_r:
+                        best, best_r = i, r_
+                if best_r < 0.2 and cover >= 0.5:  # 대장 윤곽이 조금 어긋난 경우: 가까운 것 중 가장 많이 걸치는 것
+                    for i in tree.query(op.buffer(reach)):
+                        a_ = uniq[i][0].intersection(op.buffer(reach)).area / max(op.area, 1e-12)
+                        if a_ > best_r:
+                            best, best_r = i, a_
+                registered = best is not None and (best_r >= 0.2 or cover >= 0.5)
+                # 대장에 없는 것은 실제 건물일 법한 것만 남긴다: 200㎡ 이상, 들쭉날쭉하지 않은 모양
+                # (작은 것은 차량·컨테이너, 들쭉날쭉한 것은 운동장·절토면 같은 오검출이 대부분)
+                if not registered and not (area_m2 >= ML_KEEP_M2 and compact(op) >= 0.35):
+                    dropped += 1
+                    continue
+                kept += 1
+                kept_geoms.append(op)
+                if registered:
+                    name, floors, height, extra = attrs(uniq[best][1])
+                    emit(f"{b['id'][:12]}-{k}", b["id"], poly, b["name"] or name, floors or b["floors"], height or b["height"],
+                         uniq[best][1]["use"] == "02000" or b["class"] == "apartments",
+                         "osm" if b["src"] == "OpenStreetMap" else "ml", {**extra, "reg": uniq[best][1]["id"]})
+                else:
+                    emit(f"{b['id'][:12]}-{k}", b["id"], poly, b["name"], b["floors"], b["height"],
+                         b["class"] == "apartments", "osm" if b["src"] == "OpenStreetMap" else "ml", {"unreg": True})
+        # 영상 윤곽과 거의 안 겹치는 대장 건물(영상에서 놓쳤거나 촬영 뒤 신축)은 대장 윤곽으로 넣는다.
+        # 대장 윤곽은 8m 안팎 어긋나기도 해서, 그만큼 넓혀 30% 넘게 걸치면 이미 있는 건물로 본다
+        kept_buf = unary_union(kept_geoms).buffer(reach) if kept_geoms else None
+        added = 0
+        for g, v in uniq:
+            if kept_buf is not None and g.intersection(kept_buf).area >= 0.3 * g.area:
+                continue
+            added += 1
+            name, floors, height, extra = attrs(v)
+            for k, poly in enumerate(polys_of(v["geometry"])):
+                emit(f"vw{v['id']}-{k}", v["id"], poly, name, floors, height, v["use"] == "02000", "vworld", {**extra, "reg": v["id"]})
+        print(f"건축물대장 {len(uniq)}동(중복 {len(meta) - len(uniq)} 제외) 기준 · 영상 윤곽 {kept}동 사용, {dropped}동 버림 · 대장 윤곽만 있는 건물 {added}동 추가")
+    else:
+        for b in raw:
+            for k, poly in enumerate(polys_of(b["geometry"])):
+                emit(f"{b['id'][:12]}-{k}", b["id"], poly, b["name"], b["floors"], b["height"],
+                     b["class"] == "apartments", "osm" if b["src"] == "OpenStreetMap" else "ml", {})
     # 공장 부지 안 건물은 큰 순서로 임시 이름을 붙인다 (앱에서 바꿀 수 있음)
     site_b = sorted((b for b in out if b["site"]), key=lambda b: -b["area"])
     for i, b in enumerate(site_b):
@@ -381,16 +518,39 @@ def main():
     scene = {
         "name": CFG["name"], "address": CFG["address"], "origin": CFG["origin"], "halfExtentM": HALF,
         "mPerDegLon": M_LON, "mPerDegLat": M_LAT,
-        "siteRing": [to_local(sb["west"], sb["south"]), to_local(sb["east"], sb["south"]),
-                     to_local(sb["east"], sb["north"]), to_local(sb["west"], sb["north"])],
-        "siteEstimated": True,
-        "attribution": "건물 윤곽: Overture Maps Foundation (OpenStreetMap + 위성영상 기반 ML 윤곽 doi:10.5281/zenodo.8174931) · 도로/녹지: © OpenStreetMap contributors (ODbL) · 지형: Copernicus DEM GLO-30 © DLR/Airbus, ESA (AWS 공개 데이터)",
+        "siteRing": [to_local(x, y) for x, y in SITE_RING],
+        "siteEstimated": CFG.get("siteEstimated", True),
+        "attribution": "자동 추출 건물 윤곽: Overture Maps Foundation (OpenStreetMap + 위성영상 기반 ML 윤곽 doi:10.5281/zenodo.8174931) · 도로/녹지: © OpenStreetMap contributors (ODbL) · 지형: Copernicus DEM GLO-30 © DLR/Airbus, ESA (AWS 공개 데이터)" + (" · 건물(건축물대장 GIS건물통합정보·도로명주소), 부지 경계: 브이월드(국토교통부)" if (CACHE / "vworld_bldginfo.json").exists() else ""),
         "terrain": terrain, "buildings": buildings, "roads": roads, "areas": areas, "pois": pois,
     }
-    out = ROOT / "public" / "data" / "scene.json"
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    out = OUT_DIR / "scene.json"
     out.write_text(json.dumps(scene, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     print("저장", out, f"{out.stat().st_size / 1024:.0f} KB")
+    for name, empty in (("facilities.json", "{}\n"), ("overlays.json", "[]\n")):
+        if not (OUT_DIR / name).exists():
+            (OUT_DIR / name).write_text(empty, encoding="utf-8")
+    write_site_index()
+
+
+def write_site_index():
+    """앱의 사업장 선택 메뉴용 목록: public/data/sites.json (장면이 만들어진 사업장만)"""
+    items = []
+    for p in sorted((ROOT / "sites").glob("*.json")):
+        c = json.loads(p.read_text(encoding="utf-8"))
+        if (ROOT / "public" / "data" / c["id"] / "scene.json").exists():
+            items.append({"id": c["id"], "name": c["name"], "short": c.get("short", c["name"]), "companies": c.get("companies", [])})
+    order = ["chungju", "gimcheon2", "magok"]
+    items.sort(key=lambda x: order.index(x["id"]) if x["id"] in order else 99)
+    (ROOT / "public" / "data" / "sites.json").write_text(json.dumps(items, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":
-    main()
+    if "--all" in sys.argv:
+        import subprocess
+        rest = [a for a in sys.argv[1:] if a != "--all"]
+        for p in sorted((ROOT / "sites").glob("*.json")):
+            print(f"===== {p.stem}")
+            subprocess.run([sys.executable, __file__, "--site", p.stem, *rest], check=True)
+    else:
+        main()

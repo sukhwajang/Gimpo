@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "data": "python3 scripts/build_data.py"
+    "data": "python3 scripts/build_data.py --all"
   },
   "dependencies": { "three": "^0.170.0" },
   "devDependencies": { "@types/three": "^0.170.0", "typescript": "^5.7.3", "vite": "^6.4.5" }

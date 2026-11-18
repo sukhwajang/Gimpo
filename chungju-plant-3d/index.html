@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <meta name="description" content="코오롱생명과학 충주공장 3D 지도 — 드론으로 날거나 걸어서 시설을 둘러봅니다." />
+  <meta name="description" content="코오롱생명과학·코오롱바이오텍 사업장 3D 지도 — 드론으로 날거나 걸어서 시설을 둘러봅니다." />
   <meta name="theme-color" content="#10161f" />
-  <title>코오롱생명과학 충주공장 3D 지도</title>
+  <title>코오롱생명과학 사업장 3D 지도</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2310161f'/%3E%3Cpath d='M5 24V13l7 4v-4l7 4V8h8v16z' fill='%23ffb000'/%3E%3C/svg%3E" />
   <style>
     :root {
@@ -37,6 +37,10 @@
     #side .scroll { overflow-y: auto; flex: 1; padding: 6px; }
     #side.closed { bottom: auto; }
     #side.closed .scroll, #side.closed #settings { display: none; }
+    #site-row { padding: 8px 10px; border-bottom: 1px solid var(--line); }
+    #site-row select { width: 100%; background: rgba(255, 255, 255, 0.07); border: 1px solid var(--line); border-radius: 8px; padding: 7px 8px; font-weight: 600; }
+    #site-row select option { color: #111; }
+    [hidden].company-field { display: none !important; }
     .icon-btn { border: 1px solid var(--line); background: transparent; border-radius: 8px; padding: 4px 9px; font-size: 12px; }
     .fac { display: flex; width: 100%; text-align: left; gap: 8px; align-items: center; border: 0; background: transparent; padding: 8px; border-radius: 8px; }
     .fac:hover, .fac.sel { background: rgba(255, 255, 255, 0.08); }
@@ -51,7 +55,7 @@
     #settings .row button { flex: 1; }
     .hint { color: var(--dim); font-size: 11px; line-height: 1.45; }
 
-    #info { left: 12px; top: 112px; width: 280px; padding: 12px; display: none; }
+    #info { left: 12px; top: 112px; width: 280px; padding: 12px; display: none; max-height: calc(100vh - 330px); overflow-y: auto; }
     #info.on { display: block; }
     #info h2 { margin: 0 0 8px; font-size: 14px; display: flex; justify-content: space-between; gap: 8px; }
     #info .f { display: grid; grid-template-columns: 62px 1fr; gap: 6px 8px; align-items: center; font-size: 12px; }
@@ -59,6 +63,14 @@
     #info input, #info select { width: 100%; background: rgba(255, 255, 255, 0.07); border: 1px solid var(--line); border-radius: 7px; padding: 5px 7px; }
     #info select option { color: #111; }
     #info .meta { margin-top: 8px; }
+    #info .nudge { display: flex; gap: 4px; }
+    #info .nudge button { flex: 1; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.07); border-radius: 7px; padding: 4px 0; }
+    #info .nudge button:hover { background: rgba(255, 255, 255, 0.16); }
+    #info .row2 { display: flex; gap: 6px; margin-top: 6px; }
+    #info .row2 button { flex: 1; padding: 6px; }
+    .icon-btn.danger { border-color: rgba(255, 90, 80, 0.6); color: #ff8a80; }
+    .fac .restore { flex: none; font-size: 11px; padding: 2px 8px; }
+    .fac.del .n { color: var(--dim); text-decoration: line-through; }
     #info .go { margin-top: 10px; width: 100%; border: 0; border-radius: 8px; padding: 8px; background: var(--accent); color: var(--accent-ink); font-weight: 700; }
 
     #mini { left: 12px; bottom: 12px; width: 190px; height: 190px; overflow: hidden; padding: 0; }
@@ -94,7 +106,7 @@
       #side.closed { left: auto; }
       #hud { left: 8px; right: 8px; bottom: auto; top: 62px; max-width: none; text-align: center; }
       #mini { bottom: auto; top: 112px; left: 8px; width: 120px; height: 120px; }
-      #info { top: auto; bottom: 8px; left: 8px; right: 8px; width: auto; z-index: 4; }
+      #info { top: auto; bottom: 8px; left: 8px; right: 8px; width: auto; z-index: 4; max-height: 60vh; }
       body.moving #side { display: none; }
     }
   </style>
@@ -122,20 +134,39 @@
     <h2><span id="i-title"></span><button class="icon-btn" id="i-close" aria-label="닫기">✕</button></h2>
     <div class="f">
       <span>이름</span><input id="i-name" type="text" placeholder="예: 제1제조동" />
+      <span class="company-field">소속</span><select class="company-field" id="i-company"></select>
       <span>용도</span><select id="i-use"></select>
       <span>높이(m)</span><input id="i-h" type="number" min="2" max="200" step="0.5" />
+      <span>층수</span><input id="i-fl" type="number" min="1" max="80" step="1" placeholder="넣으면 높이를 계산" />
       <span>메모</span><input id="i-memo" type="text" />
       <span>공장 시설</span><label><input id="i-site" type="checkbox" /> 부지 내 시설로 표시</label>
+      <span>위치</span>
+      <div class="nudge" id="i-move">
+        <button data-d="-1,0" title="서쪽으로 1m (Shift: 5m)">←</button><button data-d="1,0" title="동쪽으로 1m (Shift: 5m)">→</button>
+        <button data-d="0,1" title="북쪽으로 1m (Shift: 5m)">↑</button><button data-d="0,-1" title="남쪽으로 1m (Shift: 5m)">↓</button>
+      </div>
+      <span>회전·크기</span>
+      <div class="nudge" id="i-shape">
+        <button data-r="-2" title="반시계 2° (Shift: 10°)">⟲</button><button data-r="2" title="시계 2° (Shift: 10°)">⟳</button>
+        <button data-s="0.95" title="5% 작게">－</button><button data-s="1.05" title="5% 크게">＋</button>
+      </div>
     </div>
+    <p class="hint" id="i-tf"></p>
     <p class="hint meta" id="i-meta"></p>
     <button class="go" id="i-go">이 시설로 이동</button>
+    <div class="row2">
+      <button class="icon-btn" id="i-reset" title="이 건물에서 고친 내용을 모두 되돌립니다">원래대로</button>
+      <button class="icon-btn danger" id="i-del" title="Delete 키">건물 지우기</button>
+    </div>
   </div>
 
   <aside id="side" class="panel">
     <header><b>시설 목록 <span id="fac-count" class="hint"></span></b><button class="icon-btn" id="side-toggle">접기</button></header>
+    <div id="site-row"><select id="site-sel" aria-label="사업장 선택"></select></div>
     <div class="scroll" id="fac-list"></div>
     <div id="settings">
       <label><input type="checkbox" id="opt-labels" checked /> 이름표 보기</label>
+      <label title="잘못 잡힌 건물을 여러 개 지울 때"><input type="checkbox" id="opt-quickdel" /> 누르는 건물 바로 지우기</label>
       <div>
         <input type="text" id="opt-key" placeholder="브이월드 API 키 (항공사진용)" autocomplete="off" spellcheck="false" />
       </div>

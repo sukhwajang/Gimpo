@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import { Ground } from './ground';
-import { centroid, pointInRing, type Building, type FacilityStore, type Overlay, type SceneData } from './data';
+import { centroid, pointInRing, transformRings, type Building, type FacilityStore, type Overlay, type Pt, type SceneData } from './data';
 
 export interface BuildingView {
   b: Building;
@@ -11,6 +11,10 @@ export interface BuildingView {
   top: number;    // 지붕 해발
   center: [number, number]; // [x, 북쪽]
   minX: number; maxX: number; minN: number; maxN: number;
+  ring: Pt[];       // 이동·회전·크기 조정이 반영된 윤곽
+  holes: Pt[][];
+  deleted: boolean; // 사용자가 지운 건물
+  overlayHidden: boolean; // 실사 모델로 대체되어 숨긴 건물
 }
 
 function facadeTexture(kind: 'panel' | 'windows'): THREE.CanvasTexture {
@@ -152,11 +156,12 @@ export class World {
   }
 
   isSite(b: Building) { return this.store.get(b.id).site ?? b.site; }
+  isDeleted(b: Building) { return !!this.store.get(b.id).deleted; }
   heightOf(b: Building) { return this.store.get(b.id).h ?? b.h; }
 
-  private makeGeometry(b: Building, base: number, top: number): THREE.BufferGeometry {
-    const shape = new THREE.Shape(b.ring.map(([x, n]) => new THREE.Vector2(x, n)));
-    for (const h of b.holes) shape.holes.push(new THREE.Path(h.map(([x, n]) => new THREE.Vector2(x, n))));
+  private makeGeometry(v: { ring: Pt[]; holes: Pt[][] }, base: number, top: number): THREE.BufferGeometry {
+    const shape = new THREE.Shape(v.ring.map(([x, n]) => new THREE.Vector2(x, n)));
+    for (const h of v.holes) shape.holes.push(new THREE.Path(h.map(([x, n]) => new THREE.Vector2(x, n))));
     const g = new THREE.ExtrudeGeometry(shape, { depth: top - base, bevelEnabled: false });
     g.rotateX(-Math.PI / 2); // (x, 북, 위) -> (x, 위, -북)
     g.translate(0, base, 0);
@@ -164,36 +169,49 @@ export class World {
   }
 
   private addBuilding(b: Building) {
+    const mesh = new THREE.Mesh(new THREE.BufferGeometry(), this.matFor(b));
+    mesh.castShadow = mesh.receiveShadow = true;
+    const v: BuildingView = {
+      b, mesh, base: 0, top: 0, center: [0, 0], minX: 0, maxX: 0, minN: 0, maxN: 0,
+      ring: b.ring, holes: b.holes, deleted: false, overlayHidden: false,
+    };
+    mesh.userData.view = v;
+    this.scene.add(mesh);
+    this.views.push(v);
+    this.rebuild(v);
+  }
+
+  private gridKeys(v: BuildingView): string[] {
+    const keys: string[] = [];
+    for (let cx = Math.floor(v.minX / this.cell); cx <= Math.floor(v.maxX / this.cell); cx++)
+      for (let cn = Math.floor(v.minN / this.cell); cn <= Math.floor(v.maxN / this.cell); cn++) keys.push(cx + ',' + cn);
+    return keys;
+  }
+
+  /** 높이·부지 여부·윤곽(이동·회전·크기)·삭제 여부가 바뀐 건물을 다시 만든다 */
+  rebuild(v: BuildingView) {
+    for (const k of this.gridKeys(v)) {
+      const list = this.grid.get(k);
+      if (list) { const i = list.indexOf(v); if (i >= 0) list.splice(i, 1); }
+    }
+    const o = this.store.get(v.b.id);
+    const { ring, holes } = transformRings(v.b, o);
     let lo = Infinity, hi = -Infinity, minX = Infinity, maxX = -Infinity, minN = Infinity, maxN = -Infinity;
-    for (const [x, n] of b.ring) {
+    for (const [x, n] of ring) {
       const h = this.ground.heightAt(x, n);
       lo = Math.min(lo, h); hi = Math.max(hi, h);
       minX = Math.min(minX, x); maxX = Math.max(maxX, x); minN = Math.min(minN, n); maxN = Math.max(maxN, n);
     }
-    const base = lo - 1, top = hi + this.heightOf(b);
-    const mesh = new THREE.Mesh(this.makeGeometry(b, base, top), this.matFor(b));
-    mesh.castShadow = mesh.receiveShadow = true;
-    const v: BuildingView = { b, mesh, base, top, center: centroid(b.ring), minX, maxX, minN, maxN };
-    mesh.userData.view = v;
-    this.scene.add(mesh);
-    this.views.push(v);
-    for (let cx = Math.floor(minX / this.cell); cx <= Math.floor(maxX / this.cell); cx++) {
-      for (let cn = Math.floor(minN / this.cell); cn <= Math.floor(maxN / this.cell); cn++) {
-        const k = cx + ',' + cn;
-        if (!this.grid.has(k)) this.grid.set(k, []);
-        this.grid.get(k)!.push(v);
-      }
-    }
-  }
-
-  /** 높이·부지 여부가 바뀐 건물을 다시 만든다 */
-  rebuild(v: BuildingView) {
-    let hi = -Infinity;
-    for (const [x, n] of v.b.ring) hi = Math.max(hi, this.ground.heightAt(x, n));
-    v.top = hi + this.heightOf(v.b);
+    Object.assign(v, { ring, holes, minX, maxX, minN, maxN, center: centroid(ring), base: lo - 1, top: hi + this.heightOf(v.b) });
+    v.deleted = !!o.deleted;
     v.mesh.geometry.dispose();
-    v.mesh.geometry = this.makeGeometry(v.b, v.base, v.top);
+    v.mesh.geometry = this.makeGeometry(v, v.base, v.top);
     v.mesh.material = this.matFor(v.b);
+    v.mesh.visible = !v.deleted && !v.overlayHidden;
+    for (const k of this.gridKeys(v)) {
+      if (!this.grid.has(k)) this.grid.set(k, []);
+      this.grid.get(k)!.push(v);
+    }
     if (this.selBox && this.selBox.userData.view === v) this.select(v);
   }
 
@@ -204,10 +222,10 @@ export class World {
     for (const v of list) {
       if (!v.mesh.visible) continue;
       if (x < v.minX - margin || x > v.maxX + margin || n < v.minN - margin || n > v.maxN + margin) continue;
-      if (pointInRing(x, n, v.b.ring)) return v;
+      if (pointInRing(x, n, v.ring)) return v;
       if (margin > 0) {
         for (const [dx, dn] of [[margin, 0], [-margin, 0], [0, margin], [0, -margin]]) {
-          if (pointInRing(x + dx, n + dn, v.b.ring)) return v;
+          if (pointInRing(x + dx, n + dn, v.ring)) return v;
         }
       }
     }
@@ -272,7 +290,7 @@ export class World {
         this.scene.add(gltf.scene);
         for (const id of o.hideBuildingIds ?? []) {
           const v = this.views.find((w) => w.b.id === id);
-          if (v) v.mesh.visible = false;
+          if (v) { v.overlayHidden = true; v.mesh.visible = false; }
         }
       } catch (e) {
         console.warn('실사 모델을 불러오지 못했습니다:', o.url, e);

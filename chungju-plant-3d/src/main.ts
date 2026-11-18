@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Controls, type Mode } from './controls';
-import { FacilityStore, USES, displayName, loadJson, type Overlay, type Overrides, type SceneData } from './data';
+import { COMPANY_ABBR, FacilityStore, USES, displayName, loadJson, type Overlay, type Override, type Overrides, type SceneData, type SiteInfo } from './data';
 import { World, type BuildingView } from './world';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -8,12 +8,26 @@ const KEY_LS = 'plant3d.vworldKey';
 const isTouch = matchMedia('(pointer: coarse)').matches;
 
 async function start() {
-  const data = await loadJson<SceneData | null>('./data/scene.json', null);
-  if (!data) {
-    $('loading').textContent = '장면 데이터(public/data/scene.json)를 찾지 못했습니다. `npm run data` 로 먼저 만들어 주세요.';
+  // ---------- 사업장 고르기 (?site=id) ----------
+  const sites = await loadJson<SiteInfo[]>('./data/sites.json', []);
+  const want = new URLSearchParams(location.search).get('site');
+  const site = sites.find((s) => s.id === want) ?? sites[0];
+  if (!site) {
+    $('loading').textContent = '사업장 목록(public/data/sites.json)을 찾지 못했습니다. `npm run data` 로 먼저 만들어 주세요.';
     return;
   }
-  const store = new FacilityStore(await loadJson<Overrides>('./data/facilities.json', {}));
+  const siteSel = $<HTMLSelectElement>('site-sel');
+  for (const s of sites) siteSel.add(new Option(s.short, s.id));
+  siteSel.value = site.id;
+  siteSel.addEventListener('change', () => { location.search = '?site=' + encodeURIComponent(siteSel.value); });
+  const dataDir = `./data/${site.id}`;
+  const data = await loadJson<SceneData | null>(`${dataDir}/scene.json`, null);
+  if (!data) {
+    $('loading').textContent = `장면 데이터(public/data/${site.id}/scene.json)를 찾지 못했습니다. \`npm run data\` 로 먼저 만들어 주세요.`;
+    return;
+  }
+  const store = new FacilityStore(await loadJson<Overrides>(`${dataDir}/facilities.json`, {}), site.id);
+  const companies = site.companies ?? [];
 
   const canvas = $<HTMLCanvasElement>('view');
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -44,7 +58,10 @@ async function start() {
   document.body.classList.toggle('touch', isTouch);
   $('t-name').textContent = data.name + ' 3D 지도';
   $('t-addr').textContent = data.address;
-  $('t-badge').hidden = !data.siteEstimated;
+  // 부지가 지적도로 확정돼도 층수 자료가 없는 건물 높이는 여전히 어림값이다
+  const nEst = data.buildings.filter((b) => b.hEst).length;
+  $('t-badge').textContent = data.siteEstimated ? '부지 위치·건물 높이는 추정값' : `건물 높이 일부 추정 (${nEst}동)`;
+  $('t-badge').hidden = !data.siteEstimated && nEst === 0;
   $('attrib').textContent = data.attribution;
   document.title = data.name + ' 3D 지도';
 
@@ -99,9 +116,10 @@ async function start() {
   const renderList = () => {
     const list = $('fac-list');
     list.textContent = '';
-    const site = world.views.filter((v) => world.isSite(v.b)).sort((a, b) => b.b.area - a.b.area);
-    const named = world.views.filter((v) => !world.isSite(v.b) && (v.b.name || store.get(v.b.id).name) && v.b.kind !== 'apartment');
-    $('fac-count').textContent = `${site.length}동`;
+    const live = world.views.filter((v) => !v.deleted);
+    const onSite = live.filter((v) => world.isSite(v.b)).sort((a, b) => b.b.area - a.b.area);
+    const gone = world.views.filter((v) => v.deleted);
+    $('fac-count').textContent = `${onSite.length}동`;
     const add = (title: string, arr: BuildingView[], dot: boolean) => {
       if (!arr.length) return;
       const g = document.createElement('div');
@@ -114,20 +132,42 @@ async function start() {
         btn.className = 'fac' + (v === selected ? ' sel' : '');
         const n = document.createElement('span'); n.className = 'n'; n.textContent = nameOf(v);
         const m = document.createElement('span'); m.className = 'm';
-        m.textContent = (o.use && o.use !== USES[0] ? o.use + ' · ' : '') + `${v.b.area.toLocaleString()}㎡`;
+        m.textContent = (companies.length > 1 && o.company ? (COMPANY_ABBR[o.company] ?? o.company) + ' · ' : '') +
+          (o.use && o.use !== USES[0] ? o.use + ' · ' : '') + `${v.b.area.toLocaleString()}㎡`;
         if (dot) { const d = document.createElement('span'); d.className = 'dot'; btn.append(d); }
         btn.append(n, m);
-        btn.addEventListener('click', () => { select(v); goTo(v); });
+        if (v.deleted) {
+          btn.classList.add('del');
+          const r = document.createElement('span');
+          r.className = 'icon-btn restore';
+          r.textContent = '복원';
+          r.addEventListener('click', (e) => { e.stopPropagation(); setDeleted(v, false); });
+          btn.append(r);
+          btn.addEventListener('click', () => goTo(v));
+        } else {
+          btn.addEventListener('click', () => { select(v); goTo(v); });
+        }
         list.append(btn);
       }
     };
-    add('공장 부지 내 시설', site, true);
-    add('주변 업체', named, false);
+    if (companies.length > 1) {
+      // 한 부지에 여러 회사: 소속별로 묶는다
+      for (const c of companies) add(c, onSite.filter((v) => store.get(v.b.id).company === c), true);
+      add('소속 미지정', onSite.filter((v) => !companies.includes(store.get(v.b.id).company ?? '')), true);
+    } else {
+      add('부지 내 시설', onSite, true);
+    }
+    add(`지운 건물 ${gone.length}동`, gone, false);
   };
 
   // ---------- 선택·편집 ----------
   const useSel = $<HTMLSelectElement>('i-use');
   for (const u of USES) useSel.add(new Option(u, u));
+  const compSel = $<HTMLSelectElement>('i-company');
+  compSel.add(new Option('미지정', ''));
+  for (const c of companies) compSel.add(new Option(c, c));
+  document.querySelectorAll<HTMLElement>('.company-field').forEach((el) => (el.hidden = companies.length < 2));
+  compSel.addEventListener('change', () => edit({ company: compSel.value || undefined }));
   const select = (v: BuildingView | null) => {
     selected = v;
     world.select(v);
@@ -137,12 +177,20 @@ async function start() {
       $('i-title').textContent = nameOf(v);
       $<HTMLInputElement>('i-name').value = o.name ?? v.b.name ?? '';
       useSel.value = o.use ?? USES[0];
+      compSel.value = o.company ?? '';
       $<HTMLInputElement>('i-h').value = String(world.heightOf(v.b));
+      $<HTMLInputElement>('i-fl').value = '';
       $<HTMLInputElement>('i-memo').value = o.memo ?? '';
       $<HTMLInputElement>('i-site').checked = world.isSite(v.b);
-      const src = { osm: 'OpenStreetMap', ml: '위성영상 자동 추출 윤곽', vworld: '브이월드' }[v.b.src];
-      $('i-meta').textContent = `바닥 면적 약 ${v.b.area.toLocaleString()}㎡ · 윤곽 출처: ${src}` +
-        (v.b.hEst && store.get(v.b.id).h == null ? ' · 높이는 면적으로 어림한 값이라 실제와 다를 수 있습니다.' : '');
+      const src = { osm: 'OpenStreetMap', ml: '위성영상 자동 추출', vworld: '브이월드 건축물대장 GIS' }[v.b.src];
+      const b = v.b;
+      const reg = b.unreg
+        ? '건축물대장에 없는 건물입니다(자동 추출). 실제로 없으면 지워 주세요.'
+        : [b.use && `대장 용도 ${b.use}`, b.floors && `지상 ${b.floors}층`,
+           b.approved && `사용승인 ${b.approved.slice(0, 4)}.${b.approved.slice(4, 6)}.${b.approved.slice(6, 8)}`].filter(Boolean).join(' · ');
+      $('i-meta').textContent = `바닥 면적 약 ${b.area.toLocaleString()}㎡ · 윤곽: ${src}` + (reg ? ` · ${reg}` : '') +
+        (b.hEst && store.get(b.id).h == null ? ' · 높이는 면적으로 어림한 값이라 실제와 다를 수 있습니다.' : '');
+      showTf();
     }
     renderList();
   };
@@ -161,7 +209,74 @@ async function start() {
     const h = Number((e.target as HTMLInputElement).value);
     if (h >= 2 && h <= 200) edit({ h }, true);
   });
+  $<HTMLInputElement>('i-fl').addEventListener('change', (e) => {
+    const f = Math.round(Number((e.target as HTMLInputElement).value));
+    if (!selected || !(f >= 1 && f <= 80)) return;
+    const h = Math.round(f * (selected.b.kind === 'apartment' ? 2.9 : 4.5) * 10) / 10;
+    $<HTMLInputElement>('i-h').value = String(h);
+    edit({ h }, true);
+  });
   $<HTMLInputElement>('i-site').addEventListener('change', (e) => edit({ site: (e.target as HTMLInputElement).checked }, true));
+
+  // 윤곽 이동·회전·크기 (항공사진과 어긋난 건물 맞추기)
+  const showTf = () => {
+    if (!selected) return;
+    const o = store.get(selected.b.id);
+    const parts = [
+      (o.dx || o.dn) && `이동 동 ${(o.dx ?? 0).toFixed(0)}m · 북 ${(o.dn ?? 0).toFixed(0)}m`,
+      o.rot && `회전 ${o.rot.toFixed(0)}°`,
+      o.scale && o.scale !== 1 && `크기 ${(o.scale * 100).toFixed(0)}%`,
+    ].filter(Boolean);
+    $('i-tf').textContent = parts.length ? '윤곽 조정: ' + parts.join(' · ') : '';
+  };
+  const tf = (patch: (o: Override) => Override) => {
+    if (!selected) return;
+    edit(patch(store.get(selected.b.id)), true);
+    showTf();
+    composeMap();
+  };
+  $('i-move').addEventListener('click', (e) => {
+    const t = (e.target as HTMLElement).closest('button');
+    if (!t) return;
+    const [ex, en] = t.dataset.d!.split(',').map(Number);
+    const step = e.shiftKey ? 5 : 1;
+    tf((o) => ({ dx: (o.dx ?? 0) + ex * step, dn: (o.dn ?? 0) + en * step }));
+  });
+  $('i-shape').addEventListener('click', (e) => {
+    const t = (e.target as HTMLElement).closest('button');
+    if (!t) return;
+    if (t.dataset.r) tf((o) => ({ rot: ((o.rot ?? 0) + Number(t.dataset.r) * (e.shiftKey ? 5 : 1)) % 360 }));
+    if (t.dataset.s) tf((o) => ({ scale: Math.min(3, Math.max(0.3, Math.round((o.scale ?? 1) * Number(t.dataset.s) * 100) / 100)) }));
+  });
+
+  // 지우기·복원·되돌리기
+  const setDeleted = (v: BuildingView, del: boolean) => {
+    // 복원은 false 로 남긴다: undefined 면 저장 시 빠져서 facilities.json 의 deleted:true 가 다시 살아난다
+    store.set(v.b.id, { deleted: del });
+    world.rebuild(v);
+    if (del && selected === v) select(null);
+    renderList();
+    refreshLabels();
+    composeMap();
+    toast(del ? `「${nameOf(v)}」을(를) 지웠습니다. 시설 목록 맨 아래 '지운 건물'에서 복원할 수 있습니다.` : `「${nameOf(v)}」을(를) 복원했습니다.`);
+  };
+  $('i-del').addEventListener('click', () => selected && setDeleted(selected, true));
+  $('i-reset').addEventListener('click', () => {
+    if (!selected) return;
+    const v = selected;
+    store.reset(v.b.id);
+    world.rebuild(v);
+    select(v);
+    refreshLabels();
+    composeMap();
+    toast('이 건물에서 고친 내용을 되돌렸습니다.');
+  });
+  addEventListener('keydown', (e) => {
+    if ((e.target as HTMLElement)?.closest?.('input,select,textarea')) return;
+    if ((e.code === 'Delete' || e.code === 'Backspace') && selected) { e.preventDefault(); setDeleted(selected, true); }
+    if (e.code === 'Escape' && selected) select(null);
+  });
+  const quickDel = $<HTMLInputElement>('opt-quickdel');
   $('i-close').addEventListener('click', () => select(null));
   $('i-go').addEventListener('click', () => selected && goTo(selected));
 
@@ -178,7 +293,9 @@ async function start() {
     const p = locked ? new THREE.Vector2(0, 0) : new THREE.Vector2((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
     ray.setFromCamera(p, camera);
     const hit = ray.intersectObjects(world.views.filter((v) => v.mesh.visible).map((v) => v.mesh), false)[0];
-    select(hit ? (hit.object.userData.view as BuildingView) : null);
+    const v = hit ? (hit.object.userData.view as BuildingView) : null;
+    if (v && quickDel.checked) { setDeleted(v, true); return; }
+    select(v);
   });
 
   // ---------- 이름표 ----------
@@ -189,9 +306,10 @@ async function start() {
     labelBox.textContent = '';
     labels = [];
     for (const v of world.views) {
+      if (v.deleted || v.overlayHidden) continue;
       const site = world.isSite(v.b);
       const o = store.get(v.b.id);
-      if (!site && !v.b.name && !o.name) continue;
+      if (!site && !o.name) continue; // 주변 건물 이름표는 띄우지 않는다 (직접 이름을 붙인 것만)
       if (v.b.kind === 'apartment' && !o.name) continue;
       if (site && v.b.area < 100 && !o.name) continue; // 작은 부속 건물은 이름을 붙였을 때만
       const el = document.createElement('div');
@@ -234,8 +352,9 @@ async function start() {
     const s = mapCanvas.width / (2 * data.halfExtentM);
     c.drawImage(world.ground.canvas, 0, 0, mapCanvas.width, mapCanvas.height);
     for (const v of world.views) {
+      if (v.deleted) continue;
       c.beginPath();
-      v.b.ring.forEach(([x, n], i) => (i ? c.lineTo((x + data.halfExtentM) * s, (data.halfExtentM - n) * s) : c.moveTo((x + data.halfExtentM) * s, (data.halfExtentM - n) * s)));
+      v.ring.forEach(([x, n], i) => (i ? c.lineTo((x + data.halfExtentM) * s, (data.halfExtentM - n) * s) : c.moveTo((x + data.halfExtentM) * s, (data.halfExtentM - n) * s)));
       c.closePath();
       c.fillStyle = world.isSite(v.b) ? '#ffb000' : '#f4f1ea';
       c.strokeStyle = 'rgba(0,0,0,0.45)';
@@ -357,7 +476,7 @@ async function start() {
   refreshLabels();
   renderList();
   composeMap();
-  await world.addOverlays(await loadJson<Overlay[]>('./data/overlays.json', []));
+  await world.addOverlays(await loadJson<Overlay[]>(`${dataDir}/overlays.json`, []));
   $('loading').remove();
 
   const hud = $('hud');
